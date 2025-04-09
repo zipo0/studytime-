@@ -411,7 +411,8 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                 }
 
                 # Обновлённое добавление приглашения:
-                $response = ($response.TrimEnd() + "`nPS $currentDir> ")
+                $response = ($response.TrimEnd() + "`n`nPS $((Get-Location).Path)> ")
+
 
 
                 $outBytes = [Text.Encoding]::UTF8.GetBytes($response)
