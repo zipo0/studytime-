@@ -11,7 +11,7 @@ function Connect-ZiPo {
         param ([string]$ip)
         try {
             $ping = New-Object System.Net.NetworkInformation.Ping
-            $reply = $ping.Send($ip, 1000)
+            $reply = $ping.Send($ip, 300)
             return $reply.Status -eq "Success"
         } catch {
             return $false
