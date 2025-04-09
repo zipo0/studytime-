@@ -1,4 +1,4 @@
-
+cmd /c "chcp 65001" | Out-Null
 
 function Connect-ZiPo {
     $srv = "192.168.50.228"
