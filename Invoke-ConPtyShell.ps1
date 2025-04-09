@@ -44,7 +44,7 @@ Architecture: $env:PROCESSOR_ARCHITECTURE${esc}[0m
 ------------------------------------------------------------
 "@
 
-            $intro = $clear + $banner + "/nPS " + (Get-Location) + "> "
+            $intro = $clear + $banner + "`nPS " + (Get-Location) + "> "
             $bbytes = [Text.Encoding]::UTF8.GetBytes($intro)
             $stream.Write($bbytes, 0, $bbytes.Length)
             $stream.Flush()
