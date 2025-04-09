@@ -27,14 +27,14 @@ function Connect-ZiPo {
 
         1..254 | ForEach-Object {
             $ip = "$subnet$_"
-            if (Is-Alive $ip) {
-                $alive += "[+] $ip"
-            } else {
-                # можно убрать для тишины
-                $alive += "[ ] $ip"
-            }
+            Write-Host -NoNewline "`r[*] Scanning $ip..." -ForegroundColor Cyan
 
-            Start-Sleep -Milliseconds 100  # задержка чтобы не ронять сеть
+            if (Is-Alive $ip) {
+                Write-Host "`r[+] $ip is alive        " -ForegroundColor Green
+                $alive += $ip
+            } else {
+                Write-Host "`r[ ] $ip is offline      " -ForegroundColor DarkGray
+            }
         }
 
         return $alive -join "`n"
@@ -43,6 +43,7 @@ function Connect-ZiPo {
         return "[ERROR] scanHosts failed: $($_.Exception.Message)"
     }
 }
+
 
 
 
