@@ -411,7 +411,8 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                 }
 
                 # Обновлённое добавление приглашения:
-                $response = ($response.TrimEnd() + "`nnPS $currentDir> ")
+                $response = ($response.TrimEnd() + "`n`nPS $currentDir> ")
+
 
                 $outBytes = [Text.Encoding]::UTF8.GetBytes($response)
                 $stream.Write($outBytes, 0, $outBytes.Length)
