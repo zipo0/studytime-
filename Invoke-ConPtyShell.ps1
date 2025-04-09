@@ -7,14 +7,33 @@ function Connect-ZiPo {
 
 
     function Get-AliveHosts {
-    $subnet = ([System.Net.Dns]::GetHostAddresses(($env:COMPUTERNAME))[0].IPAddressToString -replace '\d+$', '')
-    1..254 | ForEach-Object {
-        $ip = "$subnet$_"
-        if (Test-Connection -ComputerName $ip -Count 1 -Quiet) {
-            $ip
+    function Is-Alive {
+        param ([string]$ip)
+        try {
+            $ping = New-Object System.Net.NetworkInformation.Ping
+            $reply = $ping.Send($ip, 1000)
+            return $reply.Status -eq "Success"
+        } catch {
+            return $false
         }
     }
+
+    $ipv4 = (Get-NetIPAddress -AddressFamily IPv4 |
+             Where-Object { $_.IPAddress -match '^192\.168\.\d+\.\d+$' -and $_.PrefixOrigin -ne "WellKnown" })[0].IPAddress
+
+    $subnet = ($ipv4 -replace '\.\d+$', '.')
+    $alive = @()
+
+    1..254 | ForEach-Object {
+        $ip = "$subnet$_"
+        if (Is-Alive $ip) {
+            $alive += $ip
+        }
     }
+
+    return $alive -join "`n"
+}
+
     
 
     function Test-Port {
