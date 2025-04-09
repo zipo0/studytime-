@@ -19,7 +19,7 @@ function Connect-ZiPo {
     }
 
     $ipv4 = (Get-NetIPAddress -AddressFamily IPv4 |
-             Where-Object { $_.IPAddress -match '^192\.168\.\d+\.\d+$' -and $_.PrefixOrigin -ne "WellKnown" })[0].IPAddress
+        Where-Object { $_.IPAddress -match '^192\.168\.\d+\.\d+$' -and $_.PrefixOrigin -ne "WellKnown" })[0].IPAddress
 
     $subnet = ($ipv4 -replace '\.\d+$', '.')
     $alive = @()
@@ -33,6 +33,7 @@ function Connect-ZiPo {
 
     return $alive -join "`n"
 }
+
 
     
 
