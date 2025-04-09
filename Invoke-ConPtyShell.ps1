@@ -100,7 +100,7 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
 ------------------------------------------------------------
 "@
 
-            $intro = $clear + $banner + "`nPS $currentDir> "
+            $intro = $clear + $banner + " `nPS $currentDir> "
             $bbytes = [Text.Encoding]::UTF8.GetBytes($intro)
             $stream.Write($bbytes, 0, $bbytes.Length)
             $stream.Flush()
