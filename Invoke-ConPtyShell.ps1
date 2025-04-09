@@ -41,7 +41,7 @@ ${esc}[31m
 ${esc}[32m[+] ZiPo Connected :: $env:USERNAME@$env:COMPUTERNAME
 OS: $([System.Environment]::OSVersion.VersionString)
 Architecture: $env:PROCESSOR_ARCHITECTURE${esc}[0m
-------------------------------------------------------------
+------------------------------------------------------------\n
 "@
 
             $intro = $clear + $banner + "nPS " + (Get-Location) + "> "
