@@ -84,8 +84,14 @@ function Connect-ZiPo {
 
    function Get-WiFiCreds {
     try {
+        # Переключаем кодовую страницу консоли на OEM 866
+        cmd /c "chcp 866 >nul"
+        [Console]::OutputEncoding = [System.Text.Encoding]::GetEncoding(866)
+        
         $output = cmd /c "netsh wlan show profiles" | Out-String
-        $profiles = $output -split "`n" | Where-Object { $_ -match "Все профили пользователей" -or $_ -match "All User Profile" }
+        $profiles = $output -split "`n" | Where-Object {
+            $_ -match "Все профили пользователей" -or $_ -match "All User Profile"
+        }
 
         if (-not $profiles) {
             return "[INFO] No Wi-Fi profiles found (adapter may be disabled or unavailable)."
