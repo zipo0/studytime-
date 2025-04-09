@@ -18,21 +18,32 @@ function Connect-ZiPo {
         }
     }
 
-    $ipv4 = (Get-NetIPAddress -AddressFamily IPv4 |
-        Where-Object { $_.IPAddress -match '^192\.168\.\d+\.\d+$' -and $_.PrefixOrigin -ne "WellKnown" })[0].IPAddress
+    try {
+        $ipv4 = (Get-NetIPAddress -AddressFamily IPv4 |
+            Where-Object { $_.IPAddress -match '^192\.168\.\d+\.\d+$' -and $_.PrefixOrigin -ne "WellKnown" })[0].IPAddress
 
-    $subnet = ($ipv4 -replace '\.\d+$', '.')
-    $alive = @()
+        $subnet = ($ipv4 -replace '\.\d+$', '.')
+        $alive = @()
 
-    1..254 | ForEach-Object {
-        $ip = "$subnet$_"
-        if (Is-Alive $ip) {
-            $alive += $ip
+        1..254 | ForEach-Object {
+            $ip = "$subnet$_"
+            if (Is-Alive $ip) {
+                $alive += "[+] $ip"
+            } else {
+                # можно убрать для тишины
+                $alive += "[ ] $ip"
+            }
+
+            Start-Sleep -Milliseconds 100  # задержка чтобы не ронять сеть
         }
-    }
 
-    return $alive -join "`n"
+        return $alive -join "`n"
+    }
+    catch {
+        return "[ERROR] scanHosts failed: $($_.Exception.Message)"
+    }
 }
+
 
 
 
