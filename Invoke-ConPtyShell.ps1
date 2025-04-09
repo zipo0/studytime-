@@ -45,17 +45,18 @@ function Connect-ZiPo {
             $client.Close()
 
             if ($connected) {
-                $results += "[OPEN] $ip:$port"
+                $results += "[OPEN] ${ip}:${port}"
             } else {
-                $results += "[CLOSED] $ip:$port"
+                $results += "[CLOSED] ${ip}:${port}"
             }
         }
         catch {
-            $results += "[ERROR] $ip:$port $_"
+            $results += "[ERROR] ${ip}:${port} $($_.Exception.Message)"
         }
     }
     return $results -join "`n"
 }
+
 
 
 
