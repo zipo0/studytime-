@@ -24,23 +24,23 @@ function Connect-ZiPo {
 
         $subnet = ($ipv4 -replace '\.\d+$', '.')
         $alive = @()
+        $output = ""
 
         1..254 | ForEach-Object {
             $ip = "$subnet$_"
-            Write-Host -NoNewline "`r[*] Scanning $ip..." -ForegroundColor Cyan
-
+            $output += "`r[*] Scanning $ip..." + "`n"
             if (Is-Alive $ip) {
-                Write-Host "`r[+] $ip is alive        " -ForegroundColor Green
+                $output += "`r[+] $ip is alive" + "`n"
                 $alive += $ip
             } else {
-                Write-Host "`r[ ] $ip is offline      " -ForegroundColor DarkGray
+                $output += "`r[ ] $ip is offline" + "`n"
             }
         }
-
-        return $alive -join "`n"
+        $output += "`nAlive hosts:" + "`n" + ($alive -join "`n")
+        Write-Output $output
     }
     catch {
-        return "[ERROR] scanHosts failed: $($_.Exception.Message)"
+        Write-Output "[ERROR] scanHosts failed: $($_.Exception.Message)"
     }
 }
 
