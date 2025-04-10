@@ -11,8 +11,7 @@ function Connect-ZiPo {
         [System.Net.Sockets.NetworkStream]$stream
     )
 
-    # Оборачиваем поток в StreamWriter и включаем AutoFlush,
-    # чтобы каждая запись отправлялась сразу.
+    # Оборачиваем поток в StreamWriter с AutoFlush
     $sw = New-Object System.IO.StreamWriter($stream, [System.Text.Encoding]::UTF8)
     $sw.AutoFlush = $true
 
@@ -28,25 +27,27 @@ function Connect-ZiPo {
     }
 
     try {
-        # Определяем локальный IPv4-адрес для определения подсети
         $ipv4 = (Get-NetIPAddress -AddressFamily IPv4 |
             Where-Object { $_.IPAddress -match '^192\.168\.\d+\.\d+$' -and $_.PrefixOrigin -ne "WellKnown" })[0].IPAddress
         $subnet = ($ipv4 -replace '\.\d+$', '.')
         $alive = @()
 
-        # Сканируем адреса в диапазоне 1..254
         1..254 | ForEach-Object {
             $ip = "$subnet$_"
-            $sw.WriteLine("`r[*] Scanning $ip...")
+            $sw.WriteLine("[*] Scanning $ip...")
+            # Добавляем небольшую задержку для повышения "свежести" вывода
+            Start-Sleep -Milliseconds 50
             if (Is-Alive $ip) {
-                $sw.WriteLine("`r[+] $ip is alive")
+                $sw.WriteLine("[+] $ip is alive")
                 $alive += $ip
             } else {
-                $sw.WriteLine("`r[ ] $ip is offline")
+                $sw.WriteLine("[ ] $ip is offline")
             }
+            Start-Sleep -Milliseconds 50
         }
 
-        $sw.WriteLine("`nAlive hosts:")
+        $sw.WriteLine("")
+        $sw.WriteLine("Alive hosts:")
         foreach ($host in $alive) {
             $sw.WriteLine($host)
         }
