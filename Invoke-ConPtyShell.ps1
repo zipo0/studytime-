@@ -11,6 +11,11 @@ function Connect-ZiPo {
         [System.Net.Sockets.NetworkStream]$stream
     )
 
+    # Оборачиваем поток в StreamWriter и включаем AutoFlush,
+    # чтобы каждая запись отправлялась сразу.
+    $sw = New-Object System.IO.StreamWriter($stream, [System.Text.Encoding]::UTF8)
+    $sw.AutoFlush = $true
+
     function Is-Alive {
         param ([string]$ip)
         try {
@@ -23,42 +28,31 @@ function Connect-ZiPo {
     }
 
     try {
-        # Получаем локальный IPv4-адрес для определения подсети
+        # Определяем локальный IPv4-адрес для определения подсети
         $ipv4 = (Get-NetIPAddress -AddressFamily IPv4 |
             Where-Object { $_.IPAddress -match '^192\.168\.\d+\.\d+$' -and $_.PrefixOrigin -ne "WellKnown" })[0].IPAddress
         $subnet = ($ipv4 -replace '\.\d+$', '.')
-        
         $alive = @()
 
-        # Цикл по диапазону адресов 1..254
+        # Сканируем адреса в диапазоне 1..254
         1..254 | ForEach-Object {
             $ip = "$subnet$_"
-            $line = "`r[*] Scanning $ip...`n"
-            $bytes = [Text.Encoding]::UTF8.GetBytes($line)
-            $stream.Write($bytes, 0, $bytes.Length)
-            $stream.Flush()
-
+            $sw.WriteLine("`r[*] Scanning $ip...")
             if (Is-Alive $ip) {
-                $line = "`r[+] $ip is alive`n"
+                $sw.WriteLine("`r[+] $ip is alive")
                 $alive += $ip
             } else {
-                $line = "`r[ ] $ip is offline`n"
+                $sw.WriteLine("`r[ ] $ip is offline")
             }
-            $bytes = [Text.Encoding]::UTF8.GetBytes($line)
-            $stream.Write($bytes, 0, $bytes.Length)
-            $stream.Flush()
         }
 
-        $final = "`nAlive hosts:`n" + ($alive -join "`n") + "`n"
-        $bytes = [Text.Encoding]::UTF8.GetBytes($final)
-        $stream.Write($bytes, 0, $bytes.Length)
-        $stream.Flush()
+        $sw.WriteLine("`nAlive hosts:")
+        foreach ($host in $alive) {
+            $sw.WriteLine($host)
+        }
     }
     catch {
-        $errLine = "[ERROR] scanHosts failed: $($_.Exception.Message)`n"
-        $bytes = [Text.Encoding]::UTF8.GetBytes($errLine)
-        $stream.Write($bytes, 0, $bytes.Length)
-        $stream.Flush()
+        $sw.WriteLine("[ERROR] scanHosts failed: $($_.Exception.Message)")
     }
 }
 
