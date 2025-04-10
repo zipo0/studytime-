@@ -35,21 +35,22 @@ function Connect-ZiPo {
         1..254 | ForEach-Object {
             $ip = "$subnet$_"
             $sw.WriteLine("[*] Scanning $ip...")
-            # Добавляем небольшую задержку для повышения "свежести" вывода
             Start-Sleep -Milliseconds 50
+
             if (Is-Alive $ip) {
                 $sw.WriteLine("[+] $ip is alive")
                 $alive += $ip
             } else {
                 $sw.WriteLine("[ ] $ip is offline")
             }
+
             Start-Sleep -Milliseconds 50
         }
 
         $sw.WriteLine("")
         $sw.WriteLine("Alive hosts:")
-        foreach ($host in $alive) {
-            $sw.WriteLine($host)
+        foreach ($aliveHost in $alive) {
+            $sw.WriteLine($aliveHost)
         }
     }
     catch {
