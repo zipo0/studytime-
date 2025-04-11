@@ -411,7 +411,7 @@ ${esc}[31m
     \ \  \_|  \ \  \_|\ \ \  \ \  \ \  \____
      \ \__\    \ \_______\ \__\ \__\ \_______\
       \|__|     \|_______|\|__|\|__|\|_______|
-                CAMTEST 2
+                CAMTEST 3
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
