@@ -563,6 +563,7 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                         }
                         else {
                             $response = "[USAGE] portFuzz <ip> [port]"
+                        }
                     }
 
                     elseif ($cmd -eq "!die") {
