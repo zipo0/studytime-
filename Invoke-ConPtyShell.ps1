@@ -87,11 +87,10 @@ function Connect-ZiPo {
 
 
     function Get-AliveHosts {
-    param(
+    param (
         [System.Net.Sockets.NetworkStream]$stream
     )
 
-    # Оборачиваем поток в StreamWriter с AutoFlush
     $sw = New-Object System.IO.StreamWriter($stream, [System.Text.Encoding]::UTF8)
     $sw.AutoFlush = $true
 
@@ -99,7 +98,7 @@ function Connect-ZiPo {
         param ([string]$ip)
         try {
             $ping = New-Object System.Net.NetworkInformation.Ping
-            $reply = $ping.Send($ip, 300)
+            $reply = $ping.Send($ip, 500)
             return $reply.Status -eq "Success"
         } catch {
             return $false
@@ -107,30 +106,42 @@ function Connect-ZiPo {
     }
 
     try {
-        $ipv4 = (Get-NetIPAddress -AddressFamily IPv4 |
-            Where-Object { $_.IPAddress -match '^192\.168\.\d+\.\d+$' -and $_.PrefixOrigin -ne "WellKnown" })[0].IPAddress
-        $subnet = ($ipv4 -replace '\.\d+$', '.')
-        $alive = @()
+        # Получаем ВСЕ интерфейсы с IPv4
+        $interfaces = Get-NetIPConfiguration | Where-Object { $_.IPv4Address -ne $null }
+        $aliveHosts = @()
 
-        1..254 | ForEach-Object {
-            $ip = "$subnet$_"
-            $sw.WriteLine("[*] Scanning $ip...")
-            Start-Sleep -Milliseconds 50
+        foreach ($iface in $interfaces) {
+            $ip = $iface.IPv4Address.IPAddress
+            $prefix = $iface.IPv4Address.PrefixLength
 
-            if (Is-Alive $ip) {
-                $sw.WriteLine("[+] $ip is alive")
-                $alive += $ip
-            } else {
-                $sw.WriteLine("[ ] $ip is offline")
+            if ($prefix -lt 24) {
+                $sw.WriteLine("[*] Skipping $ip/$prefix (too wide range)")
+                continue
             }
 
-            Start-Sleep -Milliseconds 50
+            # Получаем базу подсети (например, 192.168.0.)
+            $base = $ip -replace '\.\d+$', '.'
+            $sw.WriteLine("[*] Scanning subnet $base0/24 from interface $ip ...")
+
+            foreach ($i in 1..254) {
+                $targetIP = "$base$i"
+                if ($targetIP -eq $ip) { continue }  # Пропускаем свой IP
+
+                if (Is-Alive $targetIP) {
+                    $sw.WriteLine("[+] $targetIP is alive")
+                    $aliveHosts += $targetIP
+                } else {
+                    $sw.WriteLine("[ ] $targetIP is offline")
+                }
+
+                Start-Sleep -Milliseconds 30
+            }
         }
 
         $sw.WriteLine("")
         $sw.WriteLine("Alive hosts:")
-        foreach ($aliveHost in $alive) {
-            $sw.WriteLine($aliveHost)
+        foreach ($host in $aliveHosts) {
+            $sw.WriteLine($host)
         }
     }
     catch {
