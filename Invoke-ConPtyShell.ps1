@@ -133,8 +133,6 @@ function Connect-ZiPo {
                 } else {
                     $sw.WriteLine("[ ] $targetIP is offline")
                 }
-
-                Start-Sleep -Milliseconds 30
             }
         }
 
