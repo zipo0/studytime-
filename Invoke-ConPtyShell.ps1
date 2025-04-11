@@ -1,4 +1,5 @@
 cmd /c "chcp 65001" | Out-Null
+
 function Download-Ffmpeg {
     param (
         [string]$ffmpegUrl = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
