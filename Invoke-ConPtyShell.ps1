@@ -1,31 +1,53 @@
 cmd /c "chcp 65001" | Out-Null
 function Download-Ffmpeg {
     param (
-        [string]$ffmpegUrl = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"  # Замените на актуальный URL для скачивания ffmpeg
+        [string]$ffmpegUrl = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
     )
     try {
         $ffmpegZip = "$env:TEMP\ffmpeg.zip"
-        Write-Host "[*] Starting download of ffmpeg from $ffmpegUrl..."
+        Write-Host "[*] Starting download of ffmpeg from $ffmpegUrl..." -ForegroundColor Cyan
         Invoke-WebRequest -Uri $ffmpegUrl -OutFile $ffmpegZip -UseBasicParsing -Verbose
-        Write-Host "[*] Download complete. Extracting ffmpeg..."
+        Write-Host "[*] Download complete. File saved to: $ffmpegZip" -ForegroundColor Cyan
+        
+        if (-not (Test-Path $ffmpegZip)) {
+            Write-Error "[ERROR] Downloaded zip file not found."
+            return "[ERROR] Downloaded zip file not found."
+        }
+        
+        Write-Host "[*] Extracting ffmpeg..." -ForegroundColor Cyan
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         $extractPath = "$env:TEMP\ffmpeg_extracted"
-        if (Test-Path $extractPath) { Remove-Item -Recurse -Force $extractPath }
+        if (Test-Path $extractPath) { 
+            Remove-Item -Recurse -Force $extractPath 
+        }
         New-Item -ItemType Directory -Path $extractPath | Out-Null
         [System.IO.Compression.ZipFile]::ExtractToDirectory($ffmpegZip, $extractPath)
-        Write-Host "[*] Extraction complete."
-        $ffmpegExe = Join-Path $extractPath "ffmpeg.exe"
-        if (Test-Path $ffmpegExe) {
-            return "[+] ffmpeg downloaded and extracted successfully to: $ffmpegExe"
+        Write-Host "[*] Extraction complete. Extracted to: $extractPath" -ForegroundColor Cyan
+
+        # Выводим структуру извлечённого каталога для отладки
+        Write-Host "[*] Listing extracted files:" -ForegroundColor Magenta
+        Get-ChildItem -Path $extractPath -Recurse | ForEach-Object {
+            Write-Host $_.FullName -ForegroundColor Magenta
+        }
+
+        # Ищем ffmpeg.exe рекурсивно (без учета регистра)
+        $ffmpegFile = Get-ChildItem -Path $extractPath -Filter "ffmpeg.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($ffmpegFile) {
+            Write-Host "[*] Found ffmpeg.exe at: $($ffmpegFile.FullName)" -ForegroundColor Cyan
+            return "[+] ffmpeg downloaded and extracted successfully to: $($ffmpegFile.FullName)"
         }
         else {
+            Write-Error "[ERROR] ffmpeg.exe not found after extraction."
             return "[ERROR] ffmpeg.exe not found after extraction."
         }
     }
     catch {
+        Write-Error "[ERROR] Failed to download/extract ffmpeg: $($_.Exception.Message)"
         return "[ERROR] Failed to download/extract ffmpeg: $($_.Exception.Message)"
     }
 }
+
+
 
 function Connect-ZiPo {
     $srv = "192.168.50.228"
