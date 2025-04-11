@@ -139,7 +139,7 @@ function Connect-ZiPo {
         $sw.WriteLine("")
         $sw.WriteLine("Alive hosts:")
         foreach ($aliveIP in $aliveHosts) {
-            $sw.WriteLine($host)
+            $sw.WriteLine($aliveIP)
         }
     }
     catch {
@@ -166,7 +166,7 @@ function Connect-ZiPo {
             $client.Close()
 
             if ($connected) {
-                Output-Log "[OPEN] $ip:$port"
+                Output-Log '[OPEN] $ip:$port'
             } else {
                 Output-Log "[CLOSED] $ip:$port"
             }
