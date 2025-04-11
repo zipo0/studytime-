@@ -166,10 +166,10 @@ function Connect-ZiPo {
             $client.Close()
 
             if ($connected) {
-                Output-Log "[OPEN] $ip`:$port"
+                Output-Log "[OPEN] ${ip}:${port}"
         
             } else {
-                Output-Log "[CLOSED] $ip`:$port"
+                Output-Log "[CLOSED] ${ip}:${port}"
             }
         }
         catch {
