@@ -549,7 +549,7 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                     }
                     elseif ($cmd.StartsWith("portFuzz")) {
                         $args = $cmd.Split(" ")
-    
+                        
                         if ($args.Length -eq 2) {
                             $ip = $args[1]
                             # Вызываем Test-Ports с дефолтным списком портов
