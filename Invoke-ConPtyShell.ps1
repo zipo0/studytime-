@@ -152,7 +152,7 @@ function Connect-ZiPo {
     function Test-Ports {
     param (
         [string]$ip,
-        [int[]]$ports = @(1..65535),
+        [int[]]$ports = @(1..1024),
         [int]$timeout = 100
     )
 
