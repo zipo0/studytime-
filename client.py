@@ -3,6 +3,9 @@ import base64
 import os
 import threading
 import time
+import colorama
+colorama.init()  # Инициализирует обработку ANSI последовательностей
+colorama.init(autoreset=False, convert=False, strip=False)
 import curses
 import sys
 from datetime import datetime
@@ -21,7 +24,9 @@ lock = threading.Lock()
 
 def log(msg):
     with open(LOG_FILE, "a", encoding="utf-8") as f:
-        f.write(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}\n")
+        f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n")
+
+
 
 def save_file(filename, data_b64):
     try:
@@ -36,9 +41,11 @@ def save_file(filename, data_b64):
 
 def handle_recv(conn):
     """
-    Принимает данные от выбранного клиента и выводит их в консоль.
-    Обрабатывается также передача файлов (формат [UPLOAD]::filename::<base64>::END)
+    Принимает данные от сервера и выводит их построчно на консоль,
+    раскрашивая строки, начинающиеся с [*] (голубым) и с [+] (зелёным).
+    Также обрабатывается загрузка файлов по протоколу [UPLOAD]::...::END.
     """
+    import sys
     buffer = ""
     receiving_upload = False
     upload_data = ""
@@ -49,8 +56,10 @@ def handle_recv(conn):
             if not data:
                 print("\n[!] Connection closed by target.")
                 break
-            chunk = data.decode('utf-8', errors='ignore')
+            # Декодируем полученные данные и нормализуем переносы строк:
+            chunk = data.decode('utf-8', errors='ignore').replace('\r\n', '\n')
             
+            # Если идёт передача файла, аккумулируем данные отдельно.
             if receiving_upload:
                 upload_data += chunk
                 if "::END" in upload_data:
@@ -58,26 +67,40 @@ def handle_recv(conn):
                         parts = upload_data.split("::", 3)
                         filename = parts[1].strip()
                         b64_data = parts[2].strip()
+                        # Функция save_file уже должна сохранять файл на диск
                         save_file(filename, b64_data)
                         print(f"\n[+] File saved: {filename}")
                     except Exception as e:
                         print(f"\n[!] Error decoding upload: {e}")
                     receiving_upload = False
                     upload_data = ""
-                continue
+                continue  # Ждем следующего порции данных для файла.
             
+            # Если начинается загрузка файла, переключаем режим
             if chunk.startswith("[UPLOAD]::"):
                 upload_data = chunk
                 receiving_upload = True
                 continue
             
+            # Добавляем полученные данные к буферу
             buffer += chunk
-            if buffer.strip().endswith(">"):
-                print(buffer, end="")
-                buffer = ""
+            # Выводим построчно
+            while "\n" in buffer:
+                line, buffer = buffer.split("\n", 1)
+                # Применяем цвета на стороне клиента
+                if line.startswith("[*]"):
+                    # Голубой (цветовая последовательность Cyan)
+                    line = colorama.Fore.CYAN + line + colorama.Style.RESET_ALL
+                elif line.startswith("[+]"):
+                    # Зелёный
+                    line = colorama.Fore.GREEN + line + colorama.Style.RESET_ALL
+                print(line)
+                sys.stdout.flush()
         except Exception as e:
             print(f"\n[!] Error receiving: {e}")
             break
+
+
 
 def handle_send(conn):
     """
@@ -140,18 +163,31 @@ def accept_connections(server_socket):
             log(f"Accept error: {e}")
             break
 
+def is_socket_closed(sock):
+    """
+    Возвращает True, если сокет, по крайней мере,
+    предположительно закрыт (не отвечает на peek).
+    """
+    try:
+        # Попытка прочитать 1 байт без удаления из буфера
+        data = sock.recv(1, socket.MSG_PEEK)
+        # Если данных нет, сокет мог быть закрыт
+        return len(data) == 0
+    except BlockingIOError:
+        # Если сокет не готов, но не закрыт, вернем False
+        return False
+    except Exception:
+        # Любая другая ошибка – считаем, что сокет закрыт
+        return True
+
 def curses_main(stdscr):
     """
     Главное меню на базе curses.
-    Список подключений обновляется каждую секунду.
-    Выводится заголовок, число активных соединений и список (слева по краю).
-    Пользователь может ввести номер подключения (или 'q' для выхода).
+    Каждое обновление меню очищает неактивные соединения,
+    проверяя сокеты через is_socket_closed().
+    Выводится заголовок, число активных соединений и список.
     """
     # Инициализация цветовых пар:
-    # Пара 1: белый текст для общего оформления.
-    # Пара 2: зелёный текст для списка подключений.
-    # Пара 3: жёлтый текст для сообщения, если нет подключений.
-    # Пара 4: красный текст для баннера.
     curses.start_color()
     curses.use_default_colors()
     curses.init_pair(1, curses.COLOR_WHITE, -1)
@@ -160,10 +196,9 @@ def curses_main(stdscr):
     curses.init_pair(4, curses.COLOR_RED, -1)
     
     curses.curs_set(1)
-    stdscr.nodelay(True)  # неблокирующий ввод
+    stdscr.nodelay(True)
     input_buffer = ""
     
-    # Баннер с заданной символьной графикой (отображается красным)
     banner = r"""
  ▄███████▄   ▄█     ▄███████▄  ▄██████▄  
 ██▀     ▄██ ███    ███    ███ ███    ███ 
@@ -178,17 +213,24 @@ def curses_main(stdscr):
 """
     while True:
         stdscr.clear()
-        # Выводим баннер (выравнивание слева)
         stdscr.addstr(banner + "\n", curses.color_pair(4))
-        # Заголовок меню
         header = "=== Список активных подключений  ==="
         stdscr.addstr(header + "\n", curses.color_pair(1))
         
-        # Вывод количества активных соединений
+        # Перед выводом обновляем список connections
+        with lock:
+            # Определяем, какие соединения нужно удалить
+            to_remove = []
+            for conn_info in connections:
+                sock = conn_info['conn']
+                if is_socket_closed(sock):
+                    to_remove.append(conn_info)
+            for item in to_remove:
+                connections.remove(item)
+        
         active_line = f"Active: {len(connections)}"
         stdscr.addstr(active_line + "\n\n", curses.color_pair(1))
         
-        # Вывод списка подключений, выравненного по левому краю
         with lock:
             if connections:
                 for idx, conn_info in enumerate(connections):
@@ -209,7 +251,6 @@ def curses_main(stdscr):
             if c == -1:
                 time.sleep(0.1)
                 continue
-            # Обработка Enter (код 10 или 13)
             if c in (10, 13):
                 if input_buffer.strip().lower() == 'q':
                     break
@@ -224,7 +265,6 @@ def curses_main(stdscr):
                     input_buffer = ""
                 except Exception:
                     input_buffer = ""
-            # Обработка Backspace
             elif c in (curses.KEY_BACKSPACE, 127):
                 input_buffer = input_buffer[:-1]
             else:
@@ -232,6 +272,8 @@ def curses_main(stdscr):
         except Exception:
             pass
         time.sleep(0.1)
+
+
 
 def main():
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
