@@ -153,7 +153,7 @@ function Connect-ZiPo {
     param (
         [string]$ip,
         [int[]]$ports = @(1..1024),
-        [int]$timeout = 100
+        [int]$timeout = 300
     )
 
     Output-Log "[*] Starting port scan on $ip with timeout $timeout ms..."
