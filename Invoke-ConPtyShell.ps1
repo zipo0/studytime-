@@ -257,15 +257,15 @@ function PortSuggest {
 
     foreach ($port in $ports) {
         switch ($port) {
-            445     { $suggestions += "[+] $(ip):$(port) → SMB detected → Try: spread, pass-the-hash, PsExec" }
-            5985    { $suggestions += "[+] $(ip):$(port) → WinRM detected → Try: Spread-WinRM" }
-            135     { $suggestions += "[+] $(ip):$(port) → WMI RPC → Try: Spread-WMI" }
-            3389    { $suggestions += "[+] $(ip):$(port) → RDP → Try: brute, keylog, GUI session" }
-            80      { $suggestions += "[+] $(ip):$(port) → Web Server → Check: web panel, upload point" }
-            443     { $suggestions += "[+] $(ip):$(port) → HTTPS → Try: SSL scan, potential login" }
-            21      { $suggestions += "[+] $(ip):$(port) → FTP → Try: anonymous login, upload test" }
-            3306    { $suggestions += "[+] $(ip):$(port) → MySQL → Try: default creds, sql dump" }
-            default { $suggestions += "[-] $(ip):$(port) → Unknown or uncommon port, scan manually" }
+            445     { $suggestions += "[+] $($ip):$($port) → SMB detected → Try: spread, pass-the-hash, PsExec" }
+            5985    { $suggestions += "[+] $($ip):$($port) → WinRM detected → Try: Spread-WinRM" }
+            135     { $suggestions += "[+] $($ip):$($port) → WMI RPC → Try: Spread-WMI" }
+            3389    { $suggestions += "[+] $($ip):$($port) → RDP → Try: brute, keylog, GUI session" }
+            80      { $suggestions += "[+] $($ip):$($port) → Web Server → Check: web panel, upload point" }
+            443     { $suggestions += "[+] $($ip):$($port) → HTTPS → Try: SSL scan, potential login" }
+            21      { $suggestions += "[+] $($ip):$($port) → FTP → Try: anonymous login, upload test" }
+            3306    { $suggestions += "[+] $($ip):$($port) → MySQL → Try: default creds, sql dump" }
+            default { $suggestions += "[-] $($ip):$($port) → Unknown or uncommon port, scan manually" }
         }
     }
 
