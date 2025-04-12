@@ -398,46 +398,20 @@ function PortSuggest {
 
  function Load-SQLite {
     $dllPath = "$env:TEMP\System.Data.SQLite.dll"
-    $nupkgUrl = "https://www.nuget.org/api/v2/package/System.Data.SQLite/1.0.113.6"
-    $zipPath = "$env:TEMP\sqlite_nuget_full.zip"
-    $extractPath = "$env:TEMP\sqlite_nuget_full"
+    $url = "https://github.com/zipo0/studytime-/raw/41c368d7469e8e85d41837a2e278c215bc49044c/System.Data.SQLite.dll"
 
     try {
-        Output-Log "[*] Downloading correct SQLite package..."
-        Invoke-WebRequest -Uri $nupkgUrl -OutFile $zipPath -UseBasicParsing -ErrorAction Stop
-
-        Output-Log "[*] Extracting..."
-        if (Test-Path $extractPath) {
-            Remove-Item -Path $extractPath -Recurse -Force
-        }
-        Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
-
-        # Поиск DLL в net46 или net20 (в зависимости от версии системы)
-        $foundDll = Get-ChildItem -Path "$extractPath\lib" -Recurse -Filter "System.Data.SQLite.dll" |
-                    Where-Object { $_.FullName -match "net4" -or $_.FullName -match "net46" } |
-                    Select-Object -First 1
-
-        if (-not $foundDll) {
-            Output-Log "[ERROR] DLL not found in extracted full package."
-            return $false
-        }
-
-        Output-Log "[*] Found DLL: $($foundDll.FullName)"
-        Copy-Item $foundDll.FullName -Destination $dllPath -Force
-
-        Output-Log "[*] Loading into PowerShell..."
+        Output-Log "[*] Downloading System.Data.SQLite.dll from GitHub..."
+        Invoke-WebRequest -Uri $url -OutFile $dllPath -UseBasicParsing -ErrorAction Stop
         Add-Type -Path $dllPath -ErrorAction Stop
-
         Output-Log "[+] SQLite DLL loaded successfully!"
         return $true
     } catch {
         Output-Log "[ERROR] Load-SQLite failed: $($_.Exception.Message)"
         return $false
-    } finally {
-        Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
-        Remove-Item $extractPath -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
+
 
 
 
