@@ -892,6 +892,6 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
         }
     }
 }
-} 
+
 
 Connect-ZiPo
