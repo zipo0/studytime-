@@ -295,21 +295,21 @@ function PortSuggest {
             $client.Close()
 
             if ($connected) {
-                Output-Log "[OPEN] $ip:$port"
+                Output-Log "[OPEN] $($ip):$($port)"
                 $openPorts += $port
             } else {
-                Output-Log "[CLOSED] $ip:$port"
+                Output-Log "[CLOSED] $($ip):$($port)"
             }
         }
         catch {
-            Output-Log "[ERROR] $ip:$port $($_.Exception.Message)"
+            Output-Log "[ERROR] $($ip):$($port) $($_.Exception.Message)"
         }
     }
 
     Output-Log "[*] Port scan completed for $ip."
 
     if ($openPorts.Count -gt 0) {
-        Output-Log "`n[*] PortSuggest for $ip:"
+        Output-Log "`n[*] PortSuggest for $(ip):"
         $suggestions = PortSuggest -ip $ip -ports $openPorts
         $suggestions -split "`n" | ForEach-Object { Output-Log $_ }
     } else {
