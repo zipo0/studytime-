@@ -787,7 +787,8 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                         } catch {
                             $response = "[ERROR] Get-CredentialsFull failed: $($_.Exception.Message)"
                         }
-}
+                    }
+
                     elseif ($cmd -eq "scanHosts") {
                         Get-AliveHosts -stream $stream
                         $response = ""
