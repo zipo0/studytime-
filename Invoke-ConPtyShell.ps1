@@ -398,48 +398,47 @@ function PortSuggest {
 
  function Load-SQLite {
     $dllPath = "$env:TEMP\System.Data.SQLite.dll"
-    $nupkgUrl = "https://www.nuget.org/api/v2/package/System.Data.SQLite.Core/1.0.113.6"
-    $zipPath = "$env:TEMP\sqlite_nuget.zip"
-    $extractPath = "$env:TEMP\sqlite_nuget"
+    $nupkgUrl = "https://www.nuget.org/api/v2/package/System.Data.SQLite/1.0.113.6"
+    $zipPath = "$env:TEMP\sqlite_nuget_full.zip"
+    $extractPath = "$env:TEMP\sqlite_nuget_full"
 
     try {
-        Output-Log "[*] Downloading SQLite .nupkg from NuGet..."
+        Output-Log "[*] Downloading correct SQLite package..."
         Invoke-WebRequest -Uri $nupkgUrl -OutFile $zipPath -UseBasicParsing -ErrorAction Stop
 
-        Output-Log "[*] Extracting .nupkg..."
+        Output-Log "[*] Extracting..."
         if (Test-Path $extractPath) {
             Remove-Item -Path $extractPath -Recurse -Force
         }
         Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
 
-        # Поиск DLL в lib/net4*, потому что PowerShell 5.1 — это .NET Framework
+        # Поиск DLL в net46 или net20 (в зависимости от версии системы)
         $foundDll = Get-ChildItem -Path "$extractPath\lib" -Recurse -Filter "System.Data.SQLite.dll" |
-                    Where-Object { $_.FullName -match "net4" } |
+                    Where-Object { $_.FullName -match "net4" -or $_.FullName -match "net46" } |
                     Select-Object -First 1
 
         if (-not $foundDll) {
-            Output-Log "[ERROR] DLL not found in extracted package."
+            Output-Log "[ERROR] DLL not found in extracted full package."
             return $false
         }
 
-        Output-Log "[*] Found SQLite DLL at: $($foundDll.FullName)"
+        Output-Log "[*] Found DLL: $($foundDll.FullName)"
         Copy-Item $foundDll.FullName -Destination $dllPath -Force
 
-        Output-Log "[*] Loading DLL into PowerShell..."
+        Output-Log "[*] Loading into PowerShell..."
         Add-Type -Path $dllPath -ErrorAction Stop
 
         Output-Log "[+] SQLite DLL loaded successfully!"
         return $true
-    }
-    catch {
+    } catch {
         Output-Log "[ERROR] Load-SQLite failed: $($_.Exception.Message)"
         return $false
-    }
-    finally {
+    } finally {
         Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
         Remove-Item $extractPath -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
+
 
 
 
@@ -738,7 +737,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            TEST creds 5 +sql
+                                            TEST creds 6 +sql
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
