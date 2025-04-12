@@ -309,9 +309,10 @@ function PortSuggest {
     Output-Log "[*] Port scan completed for $ip."
 
     if ($openPorts.Count -gt 0) {
-        Output-Log "`n[*] PortSuggest for $(ip):"
-        $suggestions = PortSuggest -ip $ip -ports $openPorts
-        $suggestions -split "`n" | ForEach-Object { Output-Log $_ }
+    Output-Log "`n[*] PortSuggest for $($ip):"
+    PortSuggest -ip $ip -ports $openPorts | ForEach-Object {
+        Output-Log $_
+    }
     } else {
         Output-Log "[*] No open ports found. No suggestions available."
     }
