@@ -891,7 +891,6 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
             Start-Sleep -Seconds 5
         }
     }
-}
 
 
 Connect-ZiPo
