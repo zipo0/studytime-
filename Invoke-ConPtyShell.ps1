@@ -1,4 +1,4 @@
-cmd /c "chcp 65001" | Out-Null
+/c "chcp 65001" | Out-Null
 function Output-Log {
     param (
         [string]$message
@@ -610,9 +610,6 @@ schtasks /Delete /TN "$cleanupTask" /F >nul 2>&1
         return "[ERROR] Self-destruct failed: $($_.Exception.Message)"
     }
 }
-
-
-
 
 
 
