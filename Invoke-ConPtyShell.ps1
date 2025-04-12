@@ -1,4 +1,4 @@
-/c "chcp 65001" | Out-Null
+c "chcp 65001" | Out-Null
 function Output-Log {
     param (
         [string]$message
