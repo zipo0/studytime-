@@ -82,7 +82,7 @@ function Download-Ffmpeg {
 
 
 function Connect-ZiPo {
-    $srv = "192.168.50.228"
+    $srv = "91.204.57.222"
     $port = 6666
     $currentDir = Get-Location
 
